@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
 import { Mail } from "lucide-react";
 
@@ -13,7 +13,11 @@ export function JoinForm() {
   const [step, setStep] = useState<"code" | "auth">(inviteCode ? "auth" : "code");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState("");
+  const [showEmail, setShowEmail] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const supabase = createClient();
+  const router = useRouter();
 
   async function validateCode() {
     if (!code.trim()) return;
@@ -48,11 +52,20 @@ export function JoinForm() {
     }
   }
 
-  async function signInWithTelegram() {
-    // Telegram Login Widget opens a popup
-    // For now, redirect to our Telegram auth endpoint
-    setLoading("telegram");
-    window.location.href = `/api/auth/telegram?origin=${encodeURIComponent(window.location.origin)}`;
+  async function signInWithEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password) return;
+    setLoading("email");
+    setError("");
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setError(error.message);
+      setLoading("");
+    } else {
+      router.push("/chat");
+      router.refresh();
+    }
   }
 
   if (step === "code") {
@@ -132,14 +145,50 @@ export function JoinForm() {
             {loading === "slack" ? "Redirecting..." : "Continue with Slack"}
           </button>
 
-          <button
-            onClick={signInWithTelegram}
-            disabled={!!loading}
-            className="w-full py-3 px-4 rounded-lg bg-[#26A5E4] text-white font-medium flex items-center justify-center gap-3 hover:bg-[#1E8FCB] transition-colors disabled:opacity-50"
-          >
-            <TelegramIcon className="w-5 h-5" />
-            {loading === "telegram" ? "Redirecting..." : "Continue with Telegram"}
-          </button>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-background px-2 text-muted">or</span>
+            </div>
+          </div>
+
+          {showEmail ? (
+            <form onSubmit={signInWithEmail} className="space-y-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full px-4 py-3 rounded-lg bg-surface border border-border text-foreground text-sm focus:outline-none focus:border-accent"
+                required
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="w-full px-4 py-3 rounded-lg bg-surface border border-border text-foreground text-sm focus:outline-none focus:border-accent"
+                required
+              />
+              <button
+                type="submit"
+                disabled={!!loading}
+                className="w-full py-3 rounded-lg bg-accent text-black font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50"
+              >
+                {loading === "email" ? "Signing in..." : "Sign In with Email"}
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowEmail(true)}
+              className="w-full py-3 px-4 rounded-lg bg-surface border border-border text-foreground font-medium flex items-center justify-center gap-3 hover:bg-surface-hover transition-colors"
+            >
+              <Mail className="w-5 h-5" />
+              Sign in with Email
+            </button>
+          )}
         </div>
 
         {error && <p className="text-sm text-red-400 text-center">{error}</p>}
