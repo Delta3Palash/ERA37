@@ -29,7 +29,10 @@ export async function POST(req: NextRequest) {
     .single();
 
   try {
-    const result = await sendMessage(connection, connection.platform_channel_id, content);
+    // Prefix message with username so recipients on the platform know who sent it
+    const senderName = profile?.display_name || "User";
+    const platformContent = `[${senderName}] ${content}`;
+    const result = await sendMessage(connection, connection.platform_channel_id, platformContent);
 
     // Save to DB using service client (needs to insert for all users to see)
     const { data: message, error } = await serviceClient
