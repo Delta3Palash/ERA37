@@ -81,6 +81,12 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       if (!res.ok) {
         const err = await res.json();
         console.error("Send failed:", err);
+      } else {
+        const msg = await res.json();
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
       }
       setInput("");
     } finally {
