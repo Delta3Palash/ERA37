@@ -101,9 +101,9 @@ CREATE POLICY "Users can view own profile" ON profiles
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (auth.uid() = id);
 
--- Workspace: all authenticated users can read
-CREATE POLICY "Authenticated users can view workspace" ON workspace
-  FOR SELECT USING (auth.uid() IS NOT NULL);
+-- Workspace: public read (invite code check happens before login)
+CREATE POLICY "Anyone can view workspace" ON workspace
+  FOR SELECT USING (true);
 CREATE POLICY "Admins can update workspace" ON workspace
   FOR UPDATE USING (
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
