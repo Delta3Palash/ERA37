@@ -7,15 +7,16 @@ import type { Message } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: Message;
+  currentUserId: string;
   preferredLanguage: string;
 }
 
-export function MessageBubble({ message, preferredLanguage }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage }: MessageBubbleProps) {
   const [translatedText, setTranslatedText] = useState(message.translated_content);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
 
-  const isOutgoing = message.direction === "outgoing";
+  const isOutgoing = message.direction === "outgoing" && message.sent_by === currentUserId;
 
   async function handleTranslate() {
     if (translatedText) {
@@ -47,11 +48,14 @@ export function MessageBubble({ message, preferredLanguage }: MessageBubbleProps
 
   return (
     <div className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"} mb-2`}>
-      {/* Sender name for incoming */}
+      {/* Sender name + avatar for incoming */}
       {!isOutgoing && message.sender_name && (
-        <span className="text-xs text-muted ml-1 mb-0.5">
-          {message.sender_name}
-        </span>
+        <div className="flex items-center gap-1.5 ml-1 mb-0.5">
+          {message.sender_avatar && (
+            <img src={message.sender_avatar} alt="" className="w-4 h-4 rounded-full" />
+          )}
+          <span className="text-xs text-muted">{message.sender_name}</span>
+        </div>
       )}
 
       <div
@@ -61,10 +65,24 @@ export function MessageBubble({ message, preferredLanguage }: MessageBubbleProps
             : "bg-surface border border-border rounded-bl-md"
         }`}
       >
-        {/* Original content */}
-        <p className="text-sm whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
+        {/* Image */}
+        {message.image_url && (
+          <div className="mb-2">
+            <img
+              src={message.image_url}
+              alt="Shared image"
+              className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer"
+              onClick={() => window.open(message.image_url!, "_blank")}
+            />
+          </div>
+        )}
+
+        {/* Text content */}
+        {message.content && (
+          <p className="text-sm whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
+        )}
 
         {/* Translation */}
         {showTranslation && translatedText && (
@@ -81,7 +99,7 @@ export function MessageBubble({ message, preferredLanguage }: MessageBubbleProps
         )}
       </div>
 
-      {/* Meta row: time + translate */}
+      {/* Meta: time + translate */}
       <div className="flex items-center gap-2 mt-0.5 mx-1">
         <span className="text-[10px] text-muted">
           {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}

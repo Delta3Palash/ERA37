@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function DELETE(
@@ -10,11 +10,19 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { error } = await supabase
+  // Check admin
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_admin) return NextResponse.json({ error: "Admin only" }, { status: 403 });
+
+  const serviceClient = createServiceClient();
+  const { error } = await serviceClient
     .from("connections")
     .delete()
-    .eq("id", connectionId)
-    .eq("user_id", user.id);
+    .eq("id", connectionId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

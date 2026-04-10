@@ -1,11 +1,11 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { getTelegramFileUrl } from "@/lib/telegram";
 import { NextRequest, NextResponse } from "next/server";
 import type { TelegramUpdate } from "@/lib/telegram";
 
 export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
 
-  // Bot token is in the URL path as a query param for routing
   const botToken = req.nextUrl.searchParams.get("token");
   if (!botToken) {
     return NextResponse.json({ error: "Missing token" }, { status: 400 });
@@ -13,79 +13,57 @@ export async function POST(req: NextRequest) {
 
   const update: TelegramUpdate = await req.json();
 
-  if (!update.message?.text) {
-    return NextResponse.json({ ok: true }); // Ignore non-text messages for now
+  if (!update.message) {
+    return NextResponse.json({ ok: true });
   }
 
   const msg = update.message;
+  const hasText = !!msg.text || !!msg.caption;
+  const hasPhoto = !!msg.photo && msg.photo.length > 0;
+
+  if (!hasText && !hasPhoto) {
+    return NextResponse.json({ ok: true });
+  }
 
   try {
-    // Find the connection by bot token
+    // Find the connection by bot token and verify it's for this specific chat
     const { data: connection } = await supabase
       .from("connections")
       .select("*")
       .eq("bot_token", botToken)
       .eq("platform", "telegram")
+      .eq("platform_channel_id", String(msg.chat.id))
       .single();
 
     if (!connection) {
-      console.error("No connection found for telegram bot token");
+      // Message is from a chat we're not tracking — ignore
       return NextResponse.json({ ok: true });
     }
 
-    const chatId = String(msg.chat.id);
-    const chatName = msg.chat.title || msg.chat.first_name || `Chat ${chatId}`;
     const senderName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(" ");
 
-    // Upsert chat
-    const { data: chat } = await supabase
-      .from("chats")
-      .upsert(
-        {
-          user_id: connection.user_id,
-          connection_id: connection.id,
-          platform: "telegram",
-          platform_chat_id: chatId,
-          chat_name: chatName,
-          last_message_at: new Date().toISOString(),
-          unread_count: 1,
-        },
-        { onConflict: "connection_id,platform_chat_id" }
-      )
-      .select()
-      .single();
-
-    if (!chat) {
-      console.error("Failed to upsert chat");
-      return NextResponse.json({ ok: true });
+    // Get image URL if photo
+    let imageUrl: string | null = null;
+    if (hasPhoto) {
+      const largestPhoto = msg.photo![msg.photo!.length - 1];
+      imageUrl = await getTelegramFileUrl(botToken, largestPhoto.file_id);
     }
 
-    // Increment unread count
-    await supabase.rpc("increment_unread", { chat_row_id: chat.id }).catch(() => {
-      // RPC may not exist yet, use manual update
-      supabase
-        .from("chats")
-        .update({ unread_count: (chat.unread_count || 0) + 1, last_message_at: new Date().toISOString() })
-        .eq("id", chat.id);
-    });
-
-    // Insert message
     await supabase.from("messages").insert({
-      user_id: connection.user_id,
       connection_id: connection.id,
-      chat_id: chat.id,
       platform: "telegram",
       platform_message_id: String(msg.message_id),
-      platform_chat_id: chatId,
-      chat_name: chatName,
+      platform_channel_id: String(msg.chat.id),
       sender_name: senderName,
-      content: msg.text,
+      content: msg.text || msg.caption || null,
+      image_url: imageUrl,
       direction: "incoming",
+      message_type: hasPhoto ? "image" : "text",
     });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Telegram webhook error:", err);
-    return NextResponse.json({ ok: true }); // Always return 200 to Telegram
+    return NextResponse.json({ ok: true });
   }
 }

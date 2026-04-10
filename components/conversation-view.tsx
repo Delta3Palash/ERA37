@@ -6,15 +6,16 @@ import { MessageBubble } from "./message-bubble";
 import { Send, ArrowLeft } from "lucide-react";
 import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
-import type { Chat, Connection, Message, Platform } from "@/lib/types";
+import type { Connection, Message, Platform } from "@/lib/types";
 
 interface ConversationViewProps {
-  chat: Chat & { connection: Connection };
+  connection: Connection;
   userId: string;
+  userName: string;
   preferredLanguage: string;
 }
 
-export function ConversationView({ chat, userId, preferredLanguage }: ConversationViewProps) {
+export function ConversationView({ connection, userId, userName, preferredLanguage }: ConversationViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -26,23 +27,27 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
     loadMessages();
 
     const channel = supabase
-      .channel(`messages-${chat.id}`)
+      .channel(`messages-${connection.id}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
-          filter: `chat_id=eq.${chat.id}`,
+          filter: `connection_id=eq.${connection.id}`,
         },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
+          setMessages((prev) => {
+            // Avoid duplicates
+            if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
+            return [...prev, payload.new as Message];
+          });
         }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [chat.id]);
+  }, [connection.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -52,9 +57,9 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
     const { data } = await supabase
       .from("messages")
       .select("*")
-      .eq("chat_id", chat.id)
+      .eq("connection_id", connection.id)
       .order("created_at", { ascending: true })
-      .limit(100);
+      .limit(200);
     if (data) setMessages(data);
   }
 
@@ -68,10 +73,7 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chatId: chat.id,
-          connectionId: chat.connection_id,
-          platformChatId: chat.platform_chat_id,
-          platform: chat.platform,
+          connectionId: connection.id,
           content: input.trim(),
         }),
       });
@@ -97,7 +99,7 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
 
   return (
     <div className="flex flex-col h-full">
-      {/* Chat header */}
+      {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
         <button
           onClick={() => router.push("/chat")}
@@ -105,14 +107,14 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className={`platform-${chat.platform}`}>
-          {getPlatformIcon(chat.platform)}
+        <div className={`platform-${connection.platform}`}>
+          {getPlatformIcon(connection.platform)}
         </div>
         <div>
           <h2 className="font-semibold text-sm">
-            {chat.chat_name || "Unknown Chat"}
+            {connection.channel_name || `${connection.platform} channel`}
           </h2>
-          <span className="text-xs text-muted capitalize">{chat.platform}</span>
+          <span className="text-xs text-muted capitalize">{connection.platform}</span>
         </div>
       </div>
 
@@ -120,13 +122,14 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
         {messages.length === 0 ? (
           <div className="text-center text-muted text-sm py-8">
-            No messages yet
+            No messages yet. Messages from {connection.platform} will appear here.
           </div>
         ) : (
           messages.map((msg) => (
             <MessageBubble
               key={msg.id}
               message={msg}
+              currentUserId={userId}
               preferredLanguage={preferredLanguage}
             />
           ))
@@ -143,7 +146,7 @@ export function ConversationView({ chat, userId, preferredLanguage }: Conversati
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
+          placeholder={`Message #${connection.channel_name || connection.platform}...`}
           className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
           disabled={sending}
         />

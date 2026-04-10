@@ -1,20 +1,35 @@
--- ERA37 Database Schema
+-- ERA37 Database Schema v2 — Shared Workspace Model
 -- Run this in Supabase SQL Editor
 
 -- Profiles (extends Supabase Auth)
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT,
+  avatar_url TEXT,
   preferred_language TEXT DEFAULT 'en',
+  is_admin BOOLEAN DEFAULT false,
+  tos_accepted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Auto-create profile on signup
+-- Auto-create profile on signup (handles OAuth + email)
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO profiles (id, display_name)
-  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.email));
+  INSERT INTO profiles (id, display_name, avatar_url)
+  VALUES (
+    NEW.id,
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      NEW.raw_user_meta_data->>'display_name',
+      NEW.email
+    ),
+    COALESCE(
+      NEW.raw_user_meta_data->>'avatar_url',
+      NEW.raw_user_meta_data->>'picture'
+    )
+  );
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -24,98 +39,91 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
--- Invitation codes
-CREATE TABLE IF NOT EXISTS invitations (
+-- Workspace settings (single row — app config)
+CREATE TABLE IF NOT EXISTS workspace (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code TEXT UNIQUE NOT NULL,
-  created_by UUID REFERENCES profiles(id),
-  used_by UUID REFERENCES profiles(id),
-  expires_at TIMESTAMPTZ,
+  name TEXT DEFAULT 'ERA37',
+  invite_code TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(8), 'hex'),
+  invite_enabled BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Connected platform accounts
+-- Insert default workspace
+INSERT INTO workspace (name) VALUES ('ERA37') ON CONFLICT DO NOTHING;
+
+-- Connected platform channels (workspace-level, admin configures)
 CREATE TABLE IF NOT EXISTS connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   platform TEXT NOT NULL CHECK (platform IN ('telegram', 'discord', 'slack', 'whatsapp')),
-  platform_user_id TEXT NOT NULL,
-  platform_username TEXT,
+  platform_channel_id TEXT NOT NULL,
+  channel_name TEXT,
   bot_token TEXT,
   metadata JSONB DEFAULT '{}',
+  created_by UUID REFERENCES profiles(id),
   created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, platform)
+  UNIQUE(platform, platform_channel_id)
 );
 
--- Unified chats (conversation threads)
-CREATE TABLE IF NOT EXISTS chats (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  connection_id UUID REFERENCES connections(id) ON DELETE CASCADE,
-  platform TEXT NOT NULL,
-  platform_chat_id TEXT NOT NULL,
-  chat_name TEXT,
-  last_message_at TIMESTAMPTZ,
-  unread_count INT DEFAULT 0,
-  metadata JSONB DEFAULT '{}',
-  UNIQUE(connection_id, platform_chat_id)
-);
-
--- Unified messages
+-- Unified messages (shared — all users see all messages)
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   connection_id UUID REFERENCES connections(id) ON DELETE CASCADE,
-  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
   platform TEXT NOT NULL,
   platform_message_id TEXT,
-  platform_chat_id TEXT NOT NULL,
-  chat_name TEXT,
+  platform_channel_id TEXT NOT NULL,
   sender_name TEXT,
+  sender_avatar TEXT,
   content TEXT,
+  image_url TEXT,
   translated_content TEXT,
   translated_language TEXT,
   direction TEXT CHECK (direction IN ('incoming', 'outgoing')),
+  sent_by UUID REFERENCES profiles(id),
   message_type TEXT DEFAULT 'text',
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id, last_message_at DESC);
-CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_connection ON messages(connection_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_connections_platform ON connections(platform);
 
 -- Row Level Security
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace ENABLE ROW LEVEL SECURITY;
 ALTER TABLE connections ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
--- Policies: users can only see their own data
+-- Profiles: users see own, admins see all
 CREATE POLICY "Users can view own profile" ON profiles
   FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (auth.uid() = id);
 
-CREATE POLICY "Users can view invitations" ON invitations
-  FOR SELECT USING (true);
-CREATE POLICY "Users can create invitations" ON invitations
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
-CREATE POLICY "Users can use invitations" ON invitations
-  FOR UPDATE USING (used_by IS NULL);
+-- Workspace: all authenticated users can read
+CREATE POLICY "Authenticated users can view workspace" ON workspace
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "Admins can update workspace" ON workspace
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );
 
-CREATE POLICY "Users can view own connections" ON connections
-  FOR ALL USING (auth.uid() = user_id);
+-- Connections: all authenticated users can read, admins can manage
+CREATE POLICY "Authenticated users can view connections" ON connections
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "Admins can manage connections" ON connections
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );
 
-CREATE POLICY "Users can view own chats" ON chats
-  FOR ALL USING (auth.uid() = user_id);
+-- Messages: all authenticated users can read and send
+CREATE POLICY "Authenticated users can view messages" ON messages
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+CREATE POLICY "Authenticated users can send messages" ON messages
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "Users can update own message translations" ON messages
+  FOR UPDATE USING (auth.uid() IS NOT NULL);
 
-CREATE POLICY "Users can view own messages" ON messages
-  FOR ALL USING (auth.uid() = user_id);
-
--- Enable Realtime on messages and chats
+-- Enable Realtime on messages
 ALTER PUBLICATION supabase_realtime ADD TABLE messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE chats;

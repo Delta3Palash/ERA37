@@ -11,7 +11,6 @@ export default async function ChatLayout({
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
   if (!user) redirect("/");
 
   const { data: profile } = await supabase
@@ -23,7 +22,7 @@ export default async function ChatLayout({
   const { data: connections } = await supabase
     .from("connections")
     .select("*")
-    .eq("user_id", user.id);
+    .order("platform");
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -31,6 +30,7 @@ export default async function ChatLayout({
         userId={user.id}
         profile={profile}
         connections={connections || []}
+        isAdmin={profile?.is_admin || false}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         {children}

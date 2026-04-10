@@ -9,36 +9,30 @@ export default async function ChatConversationPage({
 }: {
   params: Promise<{ chatId: string }>;
 }) {
-  const { chatId } = await params;
+  const { chatId: connectionId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
 
-  const { data: chat } = await supabase
-    .from("chats")
-    .select("*, connection:connections(*)")
-    .eq("id", chatId)
-    .eq("user_id", user.id)
+  const { data: connection } = await supabase
+    .from("connections")
+    .select("*")
+    .eq("id", connectionId)
     .single();
 
-  if (!chat) redirect("/chat");
+  if (!connection) redirect("/chat");
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("preferred_language")
+    .select("preferred_language, display_name")
     .eq("id", user.id)
     .single();
 
-  // Reset unread count
-  await supabase
-    .from("chats")
-    .update({ unread_count: 0 })
-    .eq("id", chatId);
-
   return (
     <ConversationView
-      chat={chat}
+      connection={connection}
       userId={user.id}
+      userName={profile?.display_name || "User"}
       preferredLanguage={profile?.preferred_language || "en"}
     />
   );

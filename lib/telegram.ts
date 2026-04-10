@@ -36,6 +36,18 @@ export async function getTelegramBotInfo(botToken: string) {
   return res.json();
 }
 
+export async function getTelegramFileUrl(botToken: string, fileId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${TELEGRAM_API}${botToken}/getFile?file_id=${fileId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.result?.file_path) {
+      return `https://api.telegram.org/file/bot${botToken}/${data.result.file_path}`;
+    }
+  } catch {}
+  return null;
+}
+
 export interface TelegramUpdate {
   update_id: number;
   message?: {
@@ -44,5 +56,7 @@ export interface TelegramUpdate {
     chat: { id: number; title?: string; type: string; first_name?: string };
     date: number;
     text?: string;
+    caption?: string;
+    photo?: Array<{ file_id: string; file_unique_id: string; width: number; height: number }>;
   };
 }

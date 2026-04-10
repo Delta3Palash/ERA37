@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { exchangeSlackCode } from "@/lib/slack";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -11,7 +11,17 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+    return NextResponse.redirect(new URL("/join", req.url));
+  }
+
+  // Check admin
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .single();
+  if (!profile?.is_admin) {
+    return NextResponse.redirect(new URL("/chat?error=admin_only", req.url));
   }
 
   try {
@@ -21,23 +31,29 @@ export async function GET(req: NextRequest) {
 
     const data = await exchangeSlackCode(clientId, clientSecret, code, redirectUri);
 
-    // Save connection
-    const { error } = await supabase
+    // Get first channel the bot can see
+    const channelsRes = await fetch("https://slack.com/api/conversations.list?types=public_channel&limit=20", {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+    const channelsData = await channelsRes.json();
+    const firstChannel = channelsData.channels?.[0];
+
+    const serviceClient = createServiceClient();
+    const { error } = await serviceClient
       .from("connections")
       .upsert(
         {
-          user_id: user.id,
           platform: "slack",
-          platform_user_id: data.bot_user_id || data.authed_user?.id || "unknown",
-          platform_username: data.team?.name || "Slack Workspace",
+          platform_channel_id: firstChannel?.id || "general",
+          channel_name: firstChannel ? `#${firstChannel.name}` : "#general",
           bot_token: data.access_token,
           metadata: {
             team_id: data.team?.id,
             team_name: data.team?.name,
-            scope: data.scope,
           },
+          created_by: user.id,
         },
-        { onConflict: "user_id,platform" }
+        { onConflict: "platform,platform_channel_id" }
       );
 
     if (error) throw error;

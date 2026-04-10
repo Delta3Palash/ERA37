@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendMessage } from "@/lib/platforms";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -7,48 +7,48 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { chatId, connectionId, platformChatId, platform, content } = await req.json();
+  const { connectionId, content } = await req.json();
 
-  // Get connection with bot token
-  const { data: connection } = await supabase
+  // Use service client to read connection (bot_token) since RLS limits user access
+  const serviceClient = createServiceClient();
+  const { data: connection } = await serviceClient
     .from("connections")
     .select("*")
     .eq("id", connectionId)
-    .eq("user_id", user.id)
     .single();
 
   if (!connection) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
   }
 
-  try {
-    // Send to platform
-    const result = await sendMessage(connection, platformChatId, content);
+  // Get user profile for sender name
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, avatar_url")
+    .eq("id", user.id)
+    .single();
 
-    // Save to DB
-    const { data: message, error } = await supabase
+  try {
+    const result = await sendMessage(connection, connection.platform_channel_id, content);
+
+    // Save to DB using service client (needs to insert for all users to see)
+    const { data: message, error } = await serviceClient
       .from("messages")
       .insert({
-        user_id: user.id,
         connection_id: connectionId,
-        chat_id: chatId,
-        platform,
+        platform: connection.platform,
         platform_message_id: result.platform_message_id,
-        platform_chat_id: platformChatId,
-        sender_name: "You",
+        platform_channel_id: connection.platform_channel_id,
+        sender_name: profile?.display_name || "User",
+        sender_avatar: profile?.avatar_url,
         content,
         direction: "outgoing",
+        sent_by: user.id,
       })
       .select()
       .single();
 
     if (error) throw error;
-
-    // Update chat last_message_at
-    await supabase
-      .from("chats")
-      .update({ last_message_at: new Date().toISOString() })
-      .eq("id", chatId);
 
     return NextResponse.json(message);
   } catch (err: any) {

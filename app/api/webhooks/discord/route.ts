@@ -1,8 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// This endpoint receives messages from the Discord worker (Railway)
-// The worker pushes messages here via HTTP POST
+// Receives messages from the Discord worker (Railway)
 export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
 
@@ -14,65 +13,31 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    userId,
     connectionId,
     channelId,
-    channelName,
-    guildName,
     senderName,
+    senderAvatar,
     content,
+    imageUrl,
     messageId,
   } = await req.json();
 
-  if (!userId || !connectionId || !content) {
+  if (!connectionId || (!content && !imageUrl)) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
   try {
-    const chatName = guildName ? `${guildName} / #${channelName}` : `#${channelName}`;
-
-    // Upsert chat
-    const { data: chat } = await supabase
-      .from("chats")
-      .upsert(
-        {
-          user_id: userId,
-          connection_id: connectionId,
-          platform: "discord",
-          platform_chat_id: channelId,
-          chat_name: chatName,
-          last_message_at: new Date().toISOString(),
-        },
-        { onConflict: "connection_id,platform_chat_id" }
-      )
-      .select()
-      .single();
-
-    if (!chat) {
-      return NextResponse.json({ error: "Failed to upsert chat" }, { status: 500 });
-    }
-
-    // Update unread
-    await supabase
-      .from("chats")
-      .update({
-        unread_count: (chat.unread_count || 0) + 1,
-        last_message_at: new Date().toISOString(),
-      })
-      .eq("id", chat.id);
-
-    // Insert message
     await supabase.from("messages").insert({
-      user_id: userId,
       connection_id: connectionId,
-      chat_id: chat.id,
       platform: "discord",
       platform_message_id: messageId,
-      platform_chat_id: channelId,
-      chat_name: chatName,
+      platform_channel_id: channelId,
       sender_name: senderName,
-      content,
+      sender_avatar: senderAvatar,
+      content: content || null,
+      image_url: imageUrl || null,
       direction: "incoming",
+      message_type: imageUrl ? "image" : "text",
     });
 
     return NextResponse.json({ ok: true });

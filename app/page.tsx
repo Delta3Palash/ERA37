@@ -38,26 +38,24 @@ export default async function Home() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex gap-2 items-center justify-center text-sm text-muted">
-            <span className="w-2 h-2 rounded-full platform-telegram bg-current" />
-            <span>Telegram</span>
-            <span className="w-2 h-2 rounded-full platform-discord bg-current" />
-            <span>Discord</span>
-            <span className="w-2 h-2 rounded-full platform-slack bg-current" />
-            <span>Slack</span>
-          </div>
+        <div className="flex gap-2 items-center justify-center text-sm text-muted">
+          <span className="w-2 h-2 rounded-full platform-telegram bg-current" />
+          <span>Telegram</span>
+          <span className="w-2 h-2 rounded-full platform-discord bg-current" />
+          <span>Discord</span>
+          <span className="w-2 h-2 rounded-full platform-slack bg-current" />
+          <span>Slack</span>
         </div>
 
         <div className="space-y-3 pt-4">
           <Link
-            href="/auth/login"
+            href="/join"
             className="block w-full py-3 px-4 rounded-lg bg-accent text-black font-semibold text-center hover:bg-accent-hover transition-colors"
           >
-            Sign In
+            Get Started
           </Link>
           <p className="text-xs text-muted">
-            Invitation required to create an account
+            Join with an invite link from your team
           </p>
         </div>
       </div>

@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
+          cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({ request });
@@ -29,8 +29,8 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Allow public routes
-  const publicPaths = ["/", "/invite", "/auth"];
+  // Public routes
+  const publicPaths = ["/", "/join", "/auth", "/tos"];
   const isPublicPath = publicPaths.some(
     (p) =>
       request.nextUrl.pathname === p ||
@@ -42,6 +42,21 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
+  }
+
+  // If user is logged in but hasn't accepted TOS, redirect to TOS
+  if (user && !isPublicPath && !isApiPath) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tos_accepted_at")
+      .eq("id", user.id)
+      .single();
+
+    if (profile && !profile.tos_accepted_at && request.nextUrl.pathname !== "/tos") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/tos";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
