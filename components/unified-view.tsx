@@ -26,32 +26,11 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
   const supabase = createClient();
   const { toggle } = useSidebar();
 
-  async function autoTranslateMessage(msg: Message) {
-    if (!msg.content) return;
-    try {
-      const res = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messageId: msg.id,
-          text: msg.content,
-          targetLanguage: preferredLanguage,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === msg.id
-              ? { ...m, translated_content: data.translatedText, translated_language: preferredLanguage }
-              : m
-          )
-        );
-      }
-    } catch (err) {
-      console.error("Auto-translate error:", err);
-    }
-  }
+  // Refs to avoid stale closures in Realtime callbacks
+  const autoTranslateRef = useRef(autoTranslate);
+  const preferredLanguageRef = useRef(preferredLanguage);
+  autoTranslateRef.current = autoTranslate;
+  preferredLanguageRef.current = preferredLanguage;
 
   useEffect(() => {
     loadMessages();
@@ -78,8 +57,35 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
             });
 
             // Auto-translate incoming and bridged messages if enabled
-            if (autoTranslate && (newMsg.direction === "incoming" || newMsg.direction === "bridged") && !newMsg.translated_content && newMsg.content) {
-              autoTranslateMessage(newMsg);
+            if (
+              autoTranslateRef.current &&
+              (newMsg.direction === "incoming" || newMsg.direction === "bridged") &&
+              !newMsg.translated_content &&
+              newMsg.content
+            ) {
+              const targetLang = preferredLanguageRef.current;
+              fetch("/api/translate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  messageId: newMsg.id,
+                  text: newMsg.content,
+                  targetLanguage: targetLang,
+                }),
+              })
+                .then((res) => res.ok ? res.json() : null)
+                .then((data) => {
+                  if (data?.translatedText) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === newMsg.id
+                          ? { ...m, translated_content: data.translatedText, translated_language: targetLang }
+                          : m
+                      )
+                    );
+                  }
+                })
+                .catch((err) => console.error("Auto-translate error:", err));
             }
           }
         )
@@ -89,7 +95,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
     return () => {
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
-  }, [connections.length, autoTranslate]);
+  }, [connections.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
