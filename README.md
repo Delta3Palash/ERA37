@@ -1,31 +1,37 @@
 # ERA37 — Unified Chat Platform
 
-Connect Telegram, Discord, and Slack into a single shared workspace with real-time messaging, image support, and on-demand multilingual translation.
+Connect Telegram, Discord, Slack, and WhatsApp into a single shared workspace with real-time messaging, cross-platform bridging, image support, and on-demand multilingual translation.
 
 ## Features
 
-- **Cross-platform messaging** — Telegram, Discord, and Slack in one interface
+- **Cross-platform messaging** — Telegram, Discord, Slack, and WhatsApp in one interface
 - **Bidirectional** — Read and reply to messages from any connected platform
+- **Message bridging** — Incoming messages auto-forward to all other connected platforms (toggle per workspace)
+- **Send to All** — Broadcast a message to every connected channel with one click
 - **Image support** — Inline image display from all platforms
 - **On-demand translation** — 20+ languages, click-to-translate with cached results
 - **Shared workspace** — Admin configures one channel per platform, all users see the same conversations
-- **OAuth login** — Sign in with Discord, Google, Slack, or Telegram
-- **Invite-only access** — Single invite link controls who can join
+- **OAuth login** — Sign in with Discord, Google, or Slack
+- **Invite-only access** — Invite code required for first-time signup; returning users sign in directly
+- **User preferences** — Each user picks their translation language (globe icon in sidebar)
+- **Admin controls** — Bridge toggle, channel management, clear all messages (danger zone)
 - **Terms of Service** — Required acceptance before accessing the workspace
-- **Real-time updates** — Messages appear instantly via Supabase Realtime
-- **Dark-first UI** — Amber accent, Inter font, responsive design
+- **Real-time updates** — Messages appear instantly via Supabase Realtime with visibility-based reconnection
+- **Mobile responsive** — Slide-in sidebar drawer on mobile with hamburger menu
+- **Dark-first UI** — Amber accent (#FFA800), Inter font, responsive design
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 15 (App Router), Tailwind CSS, Lucide Icons |
-| Auth | Supabase Auth (OAuth: Discord, Google, Slack, Telegram) |
+| Auth | Supabase Auth (OAuth: Discord, Google, Slack) |
 | Database | Supabase Postgres with Row Level Security |
 | Real-time | Supabase Realtime (Postgres Changes) |
 | Hosting | Vercel (app) + Railway (Discord worker) |
 | Translation | Google Cloud Translation API v2 |
 | Discord Gateway | discord.js on Railway (persistent WebSocket) |
+| WhatsApp | Meta WhatsApp Cloud API v21.0 |
 
 ## Architecture
 
@@ -35,6 +41,8 @@ Connect Telegram, Discord, and Slack into a single shared workspace with real-ti
                          |   Vercel         |
   Slack ────events───>   |   (Next.js API   |  <──>  Supabase
                          |    Routes)       |        (Postgres + Realtime + Auth)
+  WhatsApp ─webhook──>   |                  |
+                         |   Bridge Engine  |──> Forwards to all other platforms
   Discord ──gateway──>   |                  |
        (Railway worker)  +------------------+
                                 ^
@@ -44,66 +52,78 @@ Connect Telegram, Discord, and Slack into a single shared workspace with real-ti
 ```
 
 **How it works:**
-- Admin connects one channel per platform (Telegram group, Discord channel, Slack channel)
-- Incoming messages hit webhooks (Telegram/Slack) or the Railway worker (Discord)
+- Admin connects one channel per platform (Telegram group, Discord channel, Slack channel, WhatsApp number)
+- Incoming messages hit webhooks (Telegram/Slack/WhatsApp) or the Railway worker (Discord)
 - Messages are stored in Supabase and pushed to all connected browsers via Realtime
+- If bridging is enabled, incoming messages are automatically forwarded to all other connected platforms
 - Users can reply from the UI — messages are sent back to the originating platform
 - Translation is on-demand: click the translate icon on any message
+- Tab visibility detection refetches messages when the browser tab is reopened
 
 ## Project Structure
 
 ```
 ERA37/
   app/
-    page.tsx                           Landing page
+    page.tsx                           Landing page (Get Started + Sign In)
     join/page.tsx                      Invite code + OAuth login
     tos/page.tsx                       Terms of Service
     chat/
       layout.tsx                       Chat shell (sidebar + content)
-      page.tsx                         Empty state
-      [chatId]/page.tsx                Conversation view
-    settings/page.tsx                  Admin: manage channels
+      page.tsx                         Empty state / redirect
+      all/page.tsx                     Unified view (all platforms)
+      [chatId]/page.tsx                Per-connection conversation view
+    settings/page.tsx                  Admin: manage channels, bridge, cleanup
+    preferences/page.tsx               User: language preferences
     auth/
-      callback/route.ts               OAuth callback handler
+      callback/route.ts               OAuth callback (invite code enforcement)
       signout/route.ts                Sign out
     api/
       webhooks/telegram/route.ts       Telegram incoming messages
       webhooks/discord/route.ts        Discord incoming (from worker)
       webhooks/slack/route.ts          Slack Events API
-      messages/send/route.ts           Outgoing message router
+      webhooks/whatsapp/route.ts       WhatsApp Cloud API webhooks
+      messages/send/route.ts           Outgoing message router (single + batch)
+      messages/clear/route.ts          Admin: delete all messages from app
       translate/route.ts               Google Translate proxy
       connections/telegram/route.ts    Connect Telegram channel
       connections/discord/route.ts     Connect Discord channel
       connections/slack/callback/      Slack OAuth callback
+      connections/whatsapp/route.ts    Connect WhatsApp number
       connections/[id]/route.ts        Delete connection
   components/
-    chat-sidebar.tsx                   Channel list sidebar
-    conversation-view.tsx              Message thread + input
-    message-bubble.tsx                 Message with image + translate
-    join-form.tsx                      OAuth login buttons
-    admin-settings.tsx                 Channel management UI
-    platform-icons.tsx                 SVG icons for each platform
+    chat-layout-wrapper.tsx            Mobile sidebar drawer wrapper
+    chat-sidebar.tsx                   Channel list + user info + preferences
+    unified-view.tsx                   All-platform message view + Realtime
+    conversation-view.tsx              Per-platform message thread
+    message-bubble.tsx                 Message with image + translate + bridge indicator
+    join-form.tsx                      Invite code / sign-in flow
+    admin-settings.tsx                 Channel management, bridge toggle, clear messages
+    user-preferences.tsx               Language selector for all users
+    platform-icons.tsx                 SVG icons (Telegram, Discord, Slack, WhatsApp)
     tos-accept-button.tsx              TOS acceptance
   lib/
-    supabase/client.ts                 Browser Supabase client
+    supabase/client.ts                 Browser Supabase client (singleton)
     supabase/server.ts                 Server + Service Role clients
     telegram.ts                        Telegram Bot API helpers
     discord.ts                         Discord REST API helpers
     slack.ts                           Slack Web API helpers
+    whatsapp.ts                        WhatsApp Cloud API helpers
+    bridge.ts                          Cross-platform message bridging engine
     translate.ts                       Google Translate wrapper
-    platforms.ts                       Unified send interface
+    platforms.ts                       Unified send interface (all 4 platforms)
     types.ts                           TypeScript types
   discord-worker/
-    index.js                           Standalone Discord gateway bot
+    index.js                           Standalone Discord gateway bot (Railway)
     package.json
   supabase/
     migration.sql                      Full database schema + RLS
+  docs/
+    whatsapp-setup.md                  WhatsApp Cloud API setup guide
   middleware.ts                        Auth guard + TOS enforcement
 ```
 
 ## Setup Guide
-
-See the detailed step-by-step instructions below to get ERA37 running.
 
 ### Prerequisites
 
@@ -111,7 +131,7 @@ See the detailed step-by-step instructions below to get ERA37 running.
 - A Supabase account (free or pro)
 - A Vercel account
 - A Railway account (for Discord bot)
-- Platform accounts: Telegram, Discord, and/or Slack
+- Platform accounts: Telegram, Discord, Slack, and/or WhatsApp
 
 ### Step 1: Clone and Install
 
@@ -133,7 +153,7 @@ npm install
 4. **Enable OAuth providers** in **Authentication > Providers**:
    - **Google**: Create credentials at [console.cloud.google.com](https://console.cloud.google.com/apis/credentials). Set redirect URI to `https://<your-supabase-ref>.supabase.co/auth/v1/callback`
    - **Discord**: Create app at [discord.com/developers](https://discord.com/developers/applications). Add redirect URI same as above
-   - **Slack**: Create app at [api.slack.com/apps](https://api.slack.com/apps). Add redirect URI same as above
+   - **Slack**: Create app at [api.slack.com/apps](https://api.slack.com/apps). Use `slack_oidc` provider. Add redirect URI same as above
 
 5. In **Authentication > URL Configuration**, set Site URL to your Vercel domain (or `http://localhost:3000` for dev)
 
@@ -151,6 +171,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 GOOGLE_TRANSLATE_API_KEY=AIza...
+WHATSAPP_APP_SECRET=your-meta-app-secret  # optional, for webhook signature validation
 
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
@@ -165,16 +186,17 @@ Open `http://localhost:3000`. You should see the ERA37 landing page.
 
 ### Step 5: Create Your Admin Account
 
-1. Visit `/join` and sign in with any OAuth provider
-2. Accept the Terms of Service
-3. In Supabase **SQL Editor**, make yourself admin:
+1. Visit `/join` and enter the invite code (check `workspace` table in Supabase for the auto-generated code)
+2. Sign in with any OAuth provider
+3. Accept the Terms of Service
+4. In Supabase **SQL Editor**, make yourself admin:
 
 ```sql
 UPDATE profiles SET is_admin = true
 WHERE display_name = 'Your Name';
 ```
 
-4. Now visit `/settings` — you'll see the admin panel
+5. Now visit `/settings` — you'll see the admin panel
 
 ### Step 6: Connect Telegram
 
@@ -201,7 +223,7 @@ WHERE display_name = 'Your Name';
 
 ### Step 8: Connect Slack
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps), create a new app
+1. Go to [api.slack.com/apps](https://api.slack.com/apps), create a new app (post-June 2024 for OIDC support)
 2. Under **OAuth & Permissions**, add scopes: `channels:history`, `channels:read`, `chat:write`, `users:read`
 3. Under **Event Subscriptions**:
    - Enable events
@@ -210,7 +232,13 @@ WHERE display_name = 'Your Name';
 4. Copy **Client ID**, **Client Secret**, and **Signing Secret** to your env vars
 5. In ERA37 **Settings**, click **Add to Slack** and authorize
 
-### Step 9: Deploy to Vercel
+### Step 9: Connect WhatsApp (Optional)
+
+See the detailed guide: [`docs/whatsapp-setup.md`](docs/whatsapp-setup.md)
+
+Requires a Meta Business account with WhatsApp Cloud API access.
+
+### Step 10: Deploy to Vercel
 
 1. Go to [vercel.com](https://vercel.com), import the `Delta3Palash/ERA37` GitHub repo
 2. Add all environment variables from `.env.local` (change `NEXT_PUBLIC_APP_URL` to your Vercel domain)
@@ -221,7 +249,7 @@ After deploying, update:
 - Telegram webhook will auto-update on next connection
 - Slack **Request URL** to `https://your-domain.vercel.app/api/webhooks/slack`
 
-### Step 10: Deploy Discord Worker to Railway
+### Step 11: Deploy Discord Worker to Railway
 
 1. Go to [railway.app](https://railway.app), create a new project
 2. Select **Deploy from GitHub repo** > choose `ERA37`
@@ -232,16 +260,25 @@ After deploying, update:
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key
 APP_WEBHOOK_URL=https://your-domain.vercel.app/api/webhooks/discord
-WEBHOOK_SECRET=your-discord-bot-token
+WEBHOOK_SECRET=your-discord-webhook-secret
 ```
+
+> **Important:** `APP_WEBHOOK_URL` must be set for message bridging to work from Discord. Without it, the worker writes directly to Supabase and bridging is skipped.
 
 5. Deploy — the worker will start listening to your configured Discord channel
 
-### Step 11: Share the Invite Link
+### Step 12: Enable Message Bridging (Optional)
+
+1. Go to ERA37 **Settings**
+2. Toggle **Bridge messages across platforms** ON
+3. Messages from any platform will now auto-forward to all other connected platforms
+
+### Step 13: Share the Invite Link
 
 1. Go to ERA37 **Settings** and copy the invite link
-2. Share it with your team — they'll sign in via OAuth and accept the TOS
-3. Everyone sees the same Telegram, Discord, and Slack channels in one place
+2. Share it with your team — they'll need the invite code for first signup
+3. After their first login, they can sign in directly without the invite code
+4. Everyone sees the same conversations across all connected platforms
 
 ## Google Cloud Translation Setup
 
@@ -250,6 +287,25 @@ WEBHOOK_SECRET=your-discord-bot-token
 3. Create an API key under **APIs & Services > Credentials**
 4. Add the key as `GOOGLE_TRANSLATE_API_KEY`
 5. Free tier: 500,000 characters/month
+
+## Environment Variables Reference
+
+| Variable | Where | Required |
+|----------|-------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Vercel | Yes |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel | Yes |
+| `NEXT_PUBLIC_APP_URL` | Vercel | Yes |
+| `GOOGLE_TRANSLATE_API_KEY` | Vercel | Yes |
+| `DISCORD_WEBHOOK_SECRET` | Vercel | Yes (if Discord connected) |
+| `SLACK_SIGNING_SECRET` | Vercel | Yes (if Slack connected) |
+| `NEXT_PUBLIC_SLACK_CLIENT_ID` | Vercel | Yes (if Slack connected) |
+| `SLACK_CLIENT_SECRET` | Vercel | Yes (if Slack connected) |
+| `WHATSAPP_APP_SECRET` | Vercel | Optional (webhook signature validation) |
+| `SUPABASE_URL` | Railway | Yes |
+| `SUPABASE_SERVICE_KEY` | Railway | Yes |
+| `APP_WEBHOOK_URL` | Railway | Yes (required for bridging) |
+| `WEBHOOK_SECRET` | Railway | Yes |
 
 ## Cost
 
@@ -261,6 +317,7 @@ WEBHOOK_SECRET=your-discord-bot-token
 | Telegram Bot API | $0 |
 | Discord Bot API | $0 |
 | Slack API | $0 |
+| WhatsApp Cloud API | $0 (1,000 conversations/month free) |
 | Google Translate | $0 (500K chars free) |
 
 ## License
