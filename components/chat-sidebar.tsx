@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   Hash,
+  Globe,
 } from "lucide-react";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
@@ -167,6 +168,13 @@ export function ChatSidebar({ userId, profile, connections, isAdmin }: ChatSideb
           <span className="text-sm text-muted truncate flex-1">
             {profile?.display_name || "User"}
           </span>
+          <button
+            onClick={() => navigate("/preferences")}
+            className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
+            title="Preferences"
+          >
+            <Globe className="w-4 h-4" />
+          </button>
           <form action="/auth/signout" method="POST">
             <button
               type="submit"
