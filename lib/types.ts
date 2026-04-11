@@ -5,6 +5,7 @@ export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
   preferred_language: string;
+  auto_translate: boolean;
   is_admin: boolean;
   tos_accepted_at: string | null;
   created_at: string;
@@ -15,6 +16,7 @@ export interface Workspace {
   name: string;
   invite_code: string;
   invite_enabled: boolean;
+  bridge_enabled: boolean;
   created_at: string;
 }
 
@@ -41,7 +43,7 @@ export interface Message {
   image_url: string | null;
   translated_content: string | null;
   translated_language: string | null;
-  direction: "incoming" | "outgoing";
+  direction: "incoming" | "outgoing" | "bridged";
   sent_by: string | null;
   message_type: string;
   metadata: Record<string, unknown>;

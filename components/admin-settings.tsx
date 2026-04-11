@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
+import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { SUPPORTED_LANGUAGES } from "@/lib/translate";
-import { Copy, Check, Trash2, Link as LinkIcon } from "lucide-react";
+import { Copy, Check, Trash2, Link as LinkIcon, ArrowRightLeft } from "lucide-react";
 import type { Profile, Connection, Workspace } from "@/lib/types";
 
 interface AdminSettingsProps {
@@ -17,12 +17,26 @@ interface AdminSettingsProps {
 
 export function AdminSettings({ profile, connections, workspace, userId }: AdminSettingsProps) {
   const [language, setLanguage] = useState(profile.preferred_language);
+  const [autoTranslate, setAutoTranslate] = useState(profile.auto_translate ?? false);
+  const [bridgeEnabled, setBridgeEnabled] = useState(workspace?.bridge_enabled ?? false);
   const supabase = createClient();
   const router = useRouter();
 
   async function saveLanguage(lang: string) {
     setLanguage(lang);
     await supabase.from("profiles").update({ preferred_language: lang }).eq("id", userId);
+  }
+
+  async function saveAutoTranslate(enabled: boolean) {
+    setAutoTranslate(enabled);
+    await supabase.from("profiles").update({ auto_translate: enabled }).eq("id", userId);
+  }
+
+  async function saveBridgeEnabled(enabled: boolean) {
+    setBridgeEnabled(enabled);
+    if (workspace) {
+      await supabase.from("workspace").update({ bridge_enabled: enabled }).eq("id", workspace.id);
+    }
   }
 
   const inviteUrl = workspace
@@ -46,6 +60,46 @@ export function AdminSettings({ profile, connections, workspace, userId }: Admin
             <option key={lang.code} value={lang.code}>{lang.name}</option>
           ))}
         </select>
+
+        <label className="flex items-center gap-3 mt-4 cursor-pointer">
+          <div className="relative">
+            <input
+              type="checkbox"
+              checked={autoTranslate}
+              onChange={(e) => saveAutoTranslate(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent transition-colors" />
+            <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-foreground rounded-full transition-transform peer-checked:translate-x-4" />
+          </div>
+          <span className="text-sm">Auto-translate incoming messages</span>
+        </label>
+      </section>
+
+      {/* Message Bridging */}
+      <section className="bg-surface rounded-xl border border-border p-6">
+        <div className="flex items-start gap-3">
+          <ArrowRightLeft className="w-5 h-5 text-accent mt-0.5" />
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold mb-1">Message Bridging</h2>
+            <p className="text-sm text-muted mb-3">
+              When enabled, messages received on one platform are automatically forwarded to all other connected platforms.
+            </p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={bridgeEnabled}
+                  onChange={(e) => saveBridgeEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent transition-colors" />
+                <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-foreground rounded-full transition-transform peer-checked:translate-x-4" />
+              </div>
+              <span className="text-sm">Bridge messages across platforms</span>
+            </label>
+          </div>
+        </div>
       </section>
 
       {/* Platform Channels */}
@@ -64,6 +118,9 @@ export function AdminSettings({ profile, connections, workspace, userId }: Admin
           />
           <SlackChannelSetup
             connection={connections.find((c) => c.platform === "slack")}
+          />
+          <WhatsAppChannelSetup
+            connection={connections.find((c) => c.platform === "whatsapp")}
           />
         </div>
       </section>
@@ -306,6 +363,97 @@ function SlackChannelSetup({ connection }: { connection?: Connection }) {
               className="px-3 py-1.5 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accent-hover">
               Add to Slack
             </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WhatsAppChannelSetup({ connection }: { connection?: Connection }) {
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [verifyToken, setVerifyToken] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [channelName, setChannelName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
+
+  async function connect() {
+    if (!phoneNumberId.trim() || !accessToken.trim() || !verifyToken.trim() || !recipientPhone.trim()) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/connections/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phoneNumberId: phoneNumberId.trim(),
+          accessToken: accessToken.trim(),
+          verifyToken: verifyToken.trim(),
+          recipientPhone: recipientPhone.trim(),
+          channelName: channelName.trim() || `WhatsApp ${recipientPhone}`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setPhoneNumberId("");
+      setAccessToken("");
+      setVerifyToken("");
+      setRecipientPhone("");
+      setChannelName("");
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function disconnect() {
+    if (!connection) return;
+    await fetch(`/api/connections/${connection.id}`, { method: "DELETE" });
+    router.refresh();
+  }
+
+  return (
+    <div className="flex items-start gap-4 p-4 rounded-lg bg-background border border-border">
+      <div className="platform-whatsapp mt-1"><WhatsAppIcon className="w-6 h-6" /></div>
+      <div className="flex-1">
+        <h3 className="font-medium">WhatsApp</h3>
+        {connection ? (
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-sm text-muted">{connection.channel_name}</span>
+            <button onClick={disconnect} className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1">
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+          </div>
+        ) : (
+          <div className="mt-2 space-y-2">
+            <p className="text-xs text-muted">
+              Create a Meta Business app at{" "}
+              <a href="https://developers.facebook.com" target="_blank" className="text-accent hover:underline">developers.facebook.com</a>,
+              enable WhatsApp product, complete business verification, and get a test phone number.
+            </p>
+            <input type="text" value={phoneNumberId} onChange={(e) => setPhoneNumberId(e.target.value)}
+              placeholder="Phone Number ID" className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent" />
+            <input type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="Permanent Access Token" className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent" />
+            <div className="flex gap-2">
+              <input type="text" value={verifyToken} onChange={(e) => setVerifyToken(e.target.value)}
+                placeholder="Webhook Verify Token" className="flex-1 px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent" />
+              <input type="text" value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)}
+                placeholder="Recipient phone (e.g. 1234567890)" className="flex-1 px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent" />
+            </div>
+            <input type="text" value={channelName} onChange={(e) => setChannelName(e.target.value)}
+              placeholder="Channel name (optional)" className="w-full px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent" />
+            <button onClick={connect} disabled={loading || !phoneNumberId.trim() || !accessToken.trim() || !verifyToken.trim() || !recipientPhone.trim()}
+              className="px-3 py-1.5 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accent-hover disabled:opacity-50">
+              {loading ? "..." : "Connect"}
+            </button>
+            {error && <p className="text-xs text-red-400">{error}</p>}
           </div>
         )}
       </div>

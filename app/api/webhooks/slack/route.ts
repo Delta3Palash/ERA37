@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifySlackSignature } from "@/lib/slack";
+import { bridgeMessage } from "@/lib/bridge";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -91,6 +92,9 @@ async function handleSlackMessage(teamId: string, event: any) {
       direction: "incoming",
       message_type: imageUrl ? "image" : "text",
     });
+
+    // Bridge to other platforms
+    await bridgeMessage(connection, senderName, event.text || null, imageUrl, event.ts);
   } catch (err) {
     console.error("Slack message handler error:", err);
   }

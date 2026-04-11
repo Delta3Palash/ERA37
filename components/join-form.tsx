@@ -9,8 +9,11 @@ import { Mail } from "lucide-react";
 export function JoinForm() {
   const searchParams = useSearchParams();
   const inviteCode = searchParams.get("code") || "";
+  const mode = searchParams.get("mode");
+  const isLoginMode = mode === "login" && !inviteCode;
   const [code, setCode] = useState(inviteCode);
-  const [step, setStep] = useState<"code" | "auth">(inviteCode ? "auth" : "code");
+  const [step, setStep] = useState<"code" | "auth">(inviteCode || isLoginMode ? "auth" : "code");
+  const [isLogin, setIsLogin] = useState(isLoginMode);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState("");
   const [showEmail, setShowEmail] = useState(false);
@@ -68,6 +71,18 @@ export function JoinForm() {
     }
   }
 
+  function switchToLogin() {
+    setIsLogin(true);
+    setStep("auth");
+    setError("");
+  }
+
+  function switchToSignup() {
+    setIsLogin(false);
+    setStep("code");
+    setError("");
+  }
+
   if (step === "code") {
     return (
       <div className="flex flex-col min-h-screen items-center justify-center px-4">
@@ -97,6 +112,13 @@ export function JoinForm() {
               Continue
             </button>
           </div>
+
+          <p className="text-sm text-muted text-center">
+            Already have an account?{" "}
+            <button onClick={switchToLogin} className="text-accent hover:underline font-medium">
+              Sign in
+            </button>
+          </p>
         </div>
       </div>
     );
@@ -109,7 +131,9 @@ export function JoinForm() {
           <h1 className="text-2xl font-bold">
             ERA<span className="text-accent">37</span>
           </h1>
-          <p className="text-muted text-sm mt-1">Choose how to sign in</p>
+          <p className="text-muted text-sm mt-1">
+            {isLogin ? "Welcome back! Sign in to continue" : "Choose how to sign in"}
+          </p>
         </div>
 
         <div className="space-y-3">
@@ -197,6 +221,22 @@ export function JoinForm() {
           By signing in, you agree to our{" "}
           <a href="/tos" className="text-accent hover:underline">Terms of Service</a>
         </p>
+
+        {isLogin ? (
+          <p className="text-sm text-muted text-center">
+            New here?{" "}
+            <button onClick={switchToSignup} className="text-accent hover:underline font-medium">
+              Join with invite code
+            </button>
+          </p>
+        ) : (
+          <p className="text-sm text-muted text-center">
+            Already have an account?{" "}
+            <button onClick={switchToLogin} className="text-accent hover:underline font-medium">
+              Sign in
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

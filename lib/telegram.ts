@@ -52,7 +52,7 @@ export interface TelegramUpdate {
   update_id: number;
   message?: {
     message_id: number;
-    from: { id: number; first_name: string; last_name?: string; username?: string };
+    from: { id: number; first_name: string; last_name?: string; username?: string; is_bot?: boolean };
     chat: { id: number; title?: string; type: string; first_name?: string };
     date: number;
     text?: string;

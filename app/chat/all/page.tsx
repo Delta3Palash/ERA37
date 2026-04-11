@@ -11,7 +11,7 @@ export default async function AllMessagesPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("preferred_language, display_name")
+    .select("preferred_language, display_name, auto_translate")
     .eq("id", user.id)
     .single();
 
@@ -26,6 +26,7 @@ export default async function AllMessagesPage() {
       userId={user.id}
       userName={profile?.display_name || "User"}
       preferredLanguage={profile?.preferred_language || "en"}
+      autoTranslate={profile?.auto_translate ?? false}
     />
   );
 }

@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { getTelegramFileUrl } from "@/lib/telegram";
+import { bridgeMessage } from "@/lib/bridge";
 import { NextRequest, NextResponse } from "next/server";
 import type { TelegramUpdate } from "@/lib/telegram";
 
@@ -40,6 +41,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Skip messages from bots (prevents bridge loops)
+    if (msg.from?.is_bot) {
+      return NextResponse.json({ ok: true });
+    }
+
     const senderName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(" ");
 
     // Get image URL if photo
@@ -60,6 +66,15 @@ export async function POST(req: NextRequest) {
       direction: "incoming",
       message_type: hasPhoto ? "image" : "text",
     });
+
+    // Bridge to other platforms
+    await bridgeMessage(
+      connection,
+      senderName,
+      msg.text || msg.caption || null,
+      imageUrl,
+      String(msg.message_id)
+    );
 
     return NextResponse.json({ ok: true });
   } catch (err) {

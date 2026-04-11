@@ -9,7 +9,7 @@ import {
   LogOut,
   Hash,
 } from "lucide-react";
-import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
+import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Profile, Platform } from "@/lib/types";
 
@@ -53,6 +53,7 @@ export function ChatSidebar({ userId, profile, connections, isAdmin }: ChatSideb
       case "telegram": return <TelegramIcon className={size} />;
       case "discord": return <DiscordIcon className={size} />;
       case "slack": return <SlackIcon className={size} />;
+      case "whatsapp": return <WhatsAppIcon className={size} />;
       default: return <Hash className={size} />;
     }
   }

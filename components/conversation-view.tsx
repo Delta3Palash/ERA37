@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu } from "lucide-react";
 import { useSidebar } from "./chat-layout-wrapper";
-import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
+import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
 import type { Connection, Message, Platform } from "@/lib/types";
 
@@ -14,9 +14,10 @@ interface ConversationViewProps {
   userId: string;
   userName: string;
   preferredLanguage: string;
+  autoTranslate: boolean;
 }
 
-export function ConversationView({ connection, userId, userName, preferredLanguage }: ConversationViewProps) {
+export function ConversationView({ connection, userId, userName, preferredLanguage, autoTranslate }: ConversationViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -24,6 +25,33 @@ export function ConversationView({ connection, userId, userName, preferredLangua
   const supabase = createClient();
   const router = useRouter();
   const { toggle } = useSidebar();
+
+  async function autoTranslateMessage(msg: Message) {
+    if (!msg.content) return;
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId: msg.id,
+          text: msg.content,
+          targetLanguage: preferredLanguage,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msg.id
+              ? { ...m, translated_content: data.translatedText, translated_language: preferredLanguage }
+              : m
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Auto-translate error:", err);
+    }
+  }
 
   useEffect(() => {
     loadMessages();
@@ -39,17 +67,21 @@ export function ConversationView({ connection, userId, userName, preferredLangua
           filter: `connection_id=eq.${connection.id}`,
         },
         (payload) => {
+          const newMsg = payload.new as Message;
           setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
-            return [...prev, payload.new as Message];
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
           });
+
+          if (autoTranslate && newMsg.direction === "incoming" && !newMsg.translated_content && newMsg.content) {
+            autoTranslateMessage(newMsg);
+          }
         }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [connection.id]);
+  }, [connection.id, autoTranslate]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -101,6 +133,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       case "telegram": return <TelegramIcon className="w-5 h-5" />;
       case "discord": return <DiscordIcon className="w-5 h-5" />;
       case "slack": return <SlackIcon className="w-5 h-5" />;
+      case "whatsapp": return <WhatsAppIcon className="w-5 h-5" />;
       default: return null;
     }
   }
@@ -139,6 +172,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
               message={msg}
               currentUserId={userId}
               preferredLanguage={preferredLanguage}
+              autoTranslate={autoTranslate}
             />
           ))
         )}

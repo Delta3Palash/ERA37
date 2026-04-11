@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Languages, Check } from "lucide-react";
+import { Languages, Check, ArrowRightLeft } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Message } from "@/lib/types";
 
@@ -9,14 +9,18 @@ interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
   preferredLanguage: string;
+  autoTranslate?: boolean;
 }
 
-export function MessageBubble({ message, currentUserId, preferredLanguage }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage, autoTranslate }: MessageBubbleProps) {
   const [translatedText, setTranslatedText] = useState(message.translated_content);
-  const [showTranslation, setShowTranslation] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(
+    !!(autoTranslate && message.translated_content)
+  );
   const [translating, setTranslating] = useState(false);
 
   const isOutgoing = message.direction === "outgoing" && message.sent_by === currentUserId;
+  const isBridged = message.direction === "bridged";
 
   async function handleTranslate() {
     if (translatedText) {
@@ -48,13 +52,21 @@ export function MessageBubble({ message, currentUserId, preferredLanguage }: Mes
 
   return (
     <div className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"} mb-2`}>
-      {/* Sender name + avatar for incoming */}
+      {/* Sender name + avatar for incoming/bridged */}
       {!isOutgoing && message.sender_name && (
         <div className="flex items-center gap-1.5 ml-1 mb-0.5">
+          {isBridged && (
+            <ArrowRightLeft className="w-3 h-3 text-muted" />
+          )}
           {message.sender_avatar && (
             <img src={message.sender_avatar} alt="" className="w-4 h-4 rounded-full" />
           )}
-          <span className="text-xs text-muted">{message.sender_name}</span>
+          <span className="text-xs text-muted">
+            {message.sender_name}
+            {isBridged && (message.metadata as any)?.source_platform && (
+              <span className="opacity-60"> via {(message.metadata as any).source_platform}</span>
+            )}
+          </span>
         </div>
       )}
 

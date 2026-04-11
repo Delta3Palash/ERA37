@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu } from "lucide-react";
-import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
+import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Message, Platform } from "@/lib/types";
 
@@ -13,9 +13,10 @@ interface UnifiedViewProps {
   userId: string;
   userName: string;
   preferredLanguage: string;
+  autoTranslate: boolean;
 }
 
-export function UnifiedView({ connections, userId, userName, preferredLanguage }: UnifiedViewProps) {
+export function UnifiedView({ connections, userId, userName, preferredLanguage, autoTranslate }: UnifiedViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -24,6 +25,33 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const { toggle } = useSidebar();
+
+  async function autoTranslateMessage(msg: Message) {
+    if (!msg.content) return;
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId: msg.id,
+          text: msg.content,
+          targetLanguage: preferredLanguage,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msg.id
+              ? { ...m, translated_content: data.translatedText, translated_language: preferredLanguage }
+              : m
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Auto-translate error:", err);
+    }
+  }
 
   useEffect(() => {
     loadMessages();
@@ -41,12 +69,18 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
             filter: `connection_id=eq.${conn.id}`,
           },
           (payload) => {
+            const newMsg = payload.new as Message;
             setMessages((prev) => {
-              if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
-              return [...prev, payload.new as Message].sort(
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg].sort(
                 (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
               );
             });
+
+            // Auto-translate incoming messages if enabled
+            if (autoTranslate && newMsg.direction === "incoming" && !newMsg.translated_content && newMsg.content) {
+              autoTranslateMessage(newMsg);
+            }
           }
         )
         .subscribe()
@@ -55,7 +89,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     return () => {
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
-  }, [connections.length]);
+  }, [connections.length, autoTranslate]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -113,6 +147,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
       case "telegram": return <TelegramIcon className={size} />;
       case "discord": return <DiscordIcon className={size} />;
       case "slack": return <SlackIcon className={size} />;
+      case "whatsapp": return <WhatsAppIcon className={size} />;
       default: return null;
     }
   }
@@ -190,6 +225,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
                   message={msg}
                   currentUserId={userId}
                   preferredLanguage={preferredLanguage}
+                  autoTranslate={autoTranslate}
                 />
               </div>
             </div>

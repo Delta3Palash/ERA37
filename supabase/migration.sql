@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   display_name TEXT,
   avatar_url TEXT,
   preferred_language TEXT DEFAULT 'en',
+  auto_translate BOOLEAN DEFAULT false,
   is_admin BOOLEAN DEFAULT false,
   tos_accepted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS workspace (
   name TEXT DEFAULT 'ERA37',
   invite_code TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(8), 'hex'),
   invite_enabled BOOLEAN DEFAULT true,
+  bridge_enabled BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS messages (
   image_url TEXT,
   translated_content TEXT,
   translated_language TEXT,
-  direction TEXT CHECK (direction IN ('incoming', 'outgoing')),
+  direction TEXT CHECK (direction IN ('incoming', 'outgoing', 'bridged')),
   sent_by UUID REFERENCES profiles(id),
   message_type TEXT DEFAULT 'text',
   metadata JSONB DEFAULT '{}',

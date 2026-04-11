@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { bridgeMessage } from "@/lib/bridge";
 import { NextRequest, NextResponse } from "next/server";
 
 // Receives messages from the Discord worker (Railway)
@@ -39,6 +40,17 @@ export async function POST(req: NextRequest) {
       direction: "incoming",
       message_type: imageUrl ? "image" : "text",
     });
+
+    // Bridge to other platforms
+    const { data: connection } = await supabase
+      .from("connections")
+      .select("*")
+      .eq("id", connectionId)
+      .single();
+
+    if (connection) {
+      await bridgeMessage(connection, senderName, content || null, imageUrl || null, messageId);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {

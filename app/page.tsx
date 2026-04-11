@@ -45,6 +45,8 @@ export default async function Home() {
           <span>Discord</span>
           <span className="w-2 h-2 rounded-full platform-slack bg-current" />
           <span>Slack</span>
+          <span className="w-2 h-2 rounded-full platform-whatsapp bg-current" />
+          <span>WhatsApp</span>
         </div>
 
         <div className="space-y-3 pt-4">
@@ -54,8 +56,14 @@ export default async function Home() {
           >
             Get Started
           </Link>
-          <p className="text-xs text-muted">
-            Join with an invite link from your team
+          <Link
+            href="/join?mode=login"
+            className="block w-full py-3 px-4 rounded-lg bg-surface border border-border text-foreground font-medium text-center hover:bg-surface-hover transition-colors"
+          >
+            Sign In
+          </Link>
+          <p className="text-xs text-muted text-center">
+            New? Get an invite link from your team
           </p>
         </div>
       </div>
