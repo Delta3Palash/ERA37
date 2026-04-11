@@ -21,12 +21,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
   }
 
-  // Get user profile for sender name
-  const { data: profile } = await supabase
+  // Get or create user profile for sender name
+  let { data: profile } = await supabase
     .from("profiles")
     .select("display_name, avatar_url")
     .eq("id", user.id)
     .single();
+
+  // Create profile if it doesn't exist (safety net for FK constraint)
+  if (!profile) {
+    const { data: created } = await serviceClient
+      .from("profiles")
+      .upsert(
+        {
+          id: user.id,
+          display_name: user.user_metadata?.full_name || user.user_metadata?.name || user.user_metadata?.username || user.email || "User",
+          avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+        },
+        { onConflict: "id" }
+      )
+      .select("display_name, avatar_url")
+      .single();
+    profile = created;
+  }
 
   try {
     // Prefix message with username so recipients on the platform know who sent it

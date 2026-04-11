@@ -20,26 +20,40 @@ export async function GET(req: NextRequest) {
 
   // Create profile if it doesn't exist (replaces the DB trigger)
   const user = data.user;
+  const meta = user.user_metadata ?? {};
   const serviceClient = createServiceClient();
 
-  await serviceClient
+  // Build Discord avatar URL from hash if needed
+  const discordAvatarUrl =
+    meta.id && meta.avatar
+      ? `https://cdn.discordapp.com/avatars/${meta.id}/${meta.avatar}.png`
+      : null;
+
+  const { error: profileError } = await serviceClient
     .from("profiles")
     .upsert(
       {
         id: user.id,
         display_name:
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.user_metadata?.display_name ||
+          meta.full_name ||
+          meta.name ||
+          meta.display_name ||
+          meta.custom_claims?.global_name ||
+          meta.username ||
           user.email ||
           "User",
         avatar_url:
-          user.user_metadata?.avatar_url ||
-          user.user_metadata?.picture ||
+          meta.avatar_url ||
+          meta.picture ||
+          discordAvatarUrl ||
           null,
       },
       { onConflict: "id" }
     );
+
+  if (profileError) {
+    console.error("Profile upsert failed:", profileError);
+  }
 
   return NextResponse.redirect(new URL("/chat", appUrl));
 }
