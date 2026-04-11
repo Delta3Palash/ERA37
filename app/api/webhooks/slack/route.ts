@@ -93,8 +93,12 @@ async function handleSlackMessage(teamId: string, event: any) {
       message_type: imageUrl ? "image" : "text",
     });
 
-    // Bridge to other platforms
-    await bridgeMessage(connection, senderName, event.text || null, imageUrl, event.ts);
+    // Bridge to other platforms (separate try-catch)
+    try {
+      await bridgeMessage(connection, senderName, event.text || null, imageUrl, event.ts);
+    } catch (bridgeErr) {
+      console.error("Slack bridge error:", bridgeErr);
+    }
   } catch (err) {
     console.error("Slack message handler error:", err);
   }

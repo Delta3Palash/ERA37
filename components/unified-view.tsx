@@ -77,8 +77,8 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
               );
             });
 
-            // Auto-translate incoming messages if enabled
-            if (autoTranslate && newMsg.direction === "incoming" && !newMsg.translated_content && newMsg.content) {
+            // Auto-translate incoming and bridged messages if enabled
+            if (autoTranslate && (newMsg.direction === "incoming" || newMsg.direction === "bridged") && !newMsg.translated_content && newMsg.content) {
               autoTranslateMessage(newMsg);
             }
           }

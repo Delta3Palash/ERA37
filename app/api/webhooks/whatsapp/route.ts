@@ -125,8 +125,12 @@ async function handleIncomingMessage(
       message_type: messageType,
     });
 
-    // Bridge to other platforms
-    await bridgeMessage(connection, senderName, content, imageUrl, msg.id);
+    // Bridge to other platforms (separate try-catch)
+    try {
+      await bridgeMessage(connection, senderName, content, imageUrl, msg.id);
+    } catch (bridgeErr) {
+      console.error("WhatsApp bridge error:", bridgeErr);
+    }
   } catch (err) {
     console.error("WhatsApp webhook error:", err);
   }

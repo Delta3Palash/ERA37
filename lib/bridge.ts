@@ -14,10 +14,15 @@ export async function bridgeMessage(
   const supabase = createServiceClient();
 
   // Check if bridging is enabled
-  const { data: workspace } = await supabase
+  const { data: workspace, error: wsError } = await supabase
     .from("workspace")
     .select("bridge_enabled")
     .single();
+
+  if (wsError) {
+    console.error("Bridge: workspace query failed:", wsError.message);
+    return;
+  }
 
   if (!workspace?.bridge_enabled) return;
 

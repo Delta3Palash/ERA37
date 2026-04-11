@@ -21,27 +21,36 @@ export async function POST(req: NextRequest) {
     content,
     imageUrl,
     messageId,
+    skipInsert,
   } = await req.json();
 
   if (!connectionId || (!content && !imageUrl)) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  try {
-    await supabase.from("messages").insert({
-      connection_id: connectionId,
-      platform: "discord",
-      platform_message_id: messageId,
-      platform_channel_id: channelId,
-      sender_name: senderName,
-      sender_avatar: senderAvatar,
-      content: content || null,
-      image_url: imageUrl || null,
-      direction: "incoming",
-      message_type: imageUrl ? "image" : "text",
-    });
+  // Insert message first — skip if already written directly by the worker
+  if (!skipInsert) {
+    try {
+      await supabase.from("messages").insert({
+        connection_id: connectionId,
+        platform: "discord",
+        platform_message_id: messageId,
+        platform_channel_id: channelId,
+        sender_name: senderName,
+        sender_avatar: senderAvatar,
+        content: content || null,
+        image_url: imageUrl || null,
+        direction: "incoming",
+        message_type: imageUrl ? "image" : "text",
+      });
+    } catch (err: any) {
+      console.error("Discord message insert error:", err);
+      return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+  }
 
-    // Bridge to other platforms
+  // Bridge to other platforms (separate try-catch — must not break the webhook)
+  try {
     const { data: connection } = await supabase
       .from("connections")
       .select("*")
@@ -51,10 +60,9 @@ export async function POST(req: NextRequest) {
     if (connection) {
       await bridgeMessage(connection, senderName, content || null, imageUrl || null, messageId);
     }
-
-    return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("Discord webhook error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("Discord bridge error:", err);
   }
+
+  return NextResponse.json({ ok: true });
 }

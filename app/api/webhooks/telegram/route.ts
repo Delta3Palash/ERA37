@@ -67,14 +67,18 @@ export async function POST(req: NextRequest) {
       message_type: hasPhoto ? "image" : "text",
     });
 
-    // Bridge to other platforms
-    await bridgeMessage(
-      connection,
-      senderName,
-      msg.text || msg.caption || null,
-      imageUrl,
-      String(msg.message_id)
-    );
+    // Bridge to other platforms (separate try-catch)
+    try {
+      await bridgeMessage(
+        connection,
+        senderName,
+        msg.text || msg.caption || null,
+        imageUrl,
+        String(msg.message_id)
+      );
+    } catch (bridgeErr) {
+      console.error("Telegram bridge error:", bridgeErr);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

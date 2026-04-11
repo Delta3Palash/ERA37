@@ -99,7 +99,8 @@ function startBot(connection) {
 
     try {
       if (APP_WEBHOOK_URL) {
-        await fetch(APP_WEBHOOK_URL, {
+        // Forward to Vercel webhook (handles insert + bridging)
+        const res = await fetch(APP_WEBHOOK_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -107,6 +108,9 @@ function startBot(connection) {
           },
           body: JSON.stringify(payload),
         });
+        if (!res.ok) {
+          console.error(`Webhook returned ${res.status}: ${await res.text()}`);
+        }
       } else {
         // Write directly to Supabase
         await supabase.from("messages").insert({
@@ -121,6 +125,23 @@ function startBot(connection) {
           direction: "incoming",
           message_type: payload.imageUrl ? "image" : "text",
         });
+
+        // Bridge: call the webhook just for bridging if main insert succeeded
+        try {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+          if (appUrl) {
+            await fetch(`${appUrl}/api/webhooks/discord`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${WEBHOOK_SECRET}`,
+              },
+              body: JSON.stringify({ ...payload, skipInsert: true }),
+            });
+          }
+        } catch (bridgeErr) {
+          console.error("Bridge call failed:", bridgeErr.message);
+        }
       }
     } catch (err) {
       console.error("Error forwarding message:", err.message);

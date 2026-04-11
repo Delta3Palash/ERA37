@@ -73,7 +73,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
             return [...prev, newMsg];
           });
 
-          if (autoTranslate && newMsg.direction === "incoming" && !newMsg.translated_content && newMsg.content) {
+          if (autoTranslate && (newMsg.direction === "incoming" || newMsg.direction === "bridged") && !newMsg.translated_content && newMsg.content) {
             autoTranslateMessage(newMsg);
           }
         }
