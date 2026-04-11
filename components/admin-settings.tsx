@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { SUPPORTED_LANGUAGES } from "@/lib/translate";
-import { Copy, Check, Trash2, Link as LinkIcon, ArrowRightLeft } from "lucide-react";
+import { Copy, Check, Trash2, Link as LinkIcon, ArrowRightLeft, AlertTriangle } from "lucide-react";
 import type { Profile, Connection, Workspace } from "@/lib/types";
 
 interface AdminSettingsProps {
@@ -124,7 +124,67 @@ export function AdminSettings({ profile, connections, workspace, userId }: Admin
           />
         </div>
       </section>
+
+      {/* Danger Zone */}
+      <ClearMessagesSection />
     </div>
+  );
+}
+
+function ClearMessagesSection() {
+  const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const router = useRouter();
+
+  async function clearAll() {
+    setClearing(true);
+    try {
+      const res = await fetch("/api/messages/clear", { method: "DELETE" });
+      if (res.ok) {
+        setConfirming(false);
+        router.refresh();
+      }
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  return (
+    <section className="bg-surface rounded-xl border border-red-900/50 p-6">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
+        <div className="flex-1">
+          <h2 className="text-lg font-semibold mb-1">Danger Zone</h2>
+          <p className="text-sm text-muted mb-3">
+            Clear all messages from the app. This only removes messages from ERA37 — it does not delete anything from Discord, Slack, Telegram, or WhatsApp.
+          </p>
+          {confirming ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={clearAll}
+                disabled={clearing}
+                className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-500 disabled:opacity-50"
+              >
+                {clearing ? "Clearing..." : "Yes, clear all messages"}
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                className="px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-muted hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              className="px-3 py-1.5 rounded-lg bg-red-900/30 border border-red-900/50 text-red-400 text-sm font-medium hover:bg-red-900/50"
+            >
+              Clear all messages
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

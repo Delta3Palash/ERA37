@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const senderName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(" ");
+    const senderName = msg.from.username || msg.from.first_name;
 
     // Get image URL if photo
     let imageUrl: string | null = null;
