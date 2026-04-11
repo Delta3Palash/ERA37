@@ -10,6 +10,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "ERA37 — Unified Chat",
   description: "Connect Telegram, Discord, and Slack in one place",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
