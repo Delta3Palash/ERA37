@@ -120,6 +120,27 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     return connections.find((c) => c.id === msg.connection_id);
   }
 
+  // Group broadcast messages (same content, same sender, within 2s)
+  function groupMessages(msgs: Message[]): { msg: Message; platforms: Platform[] }[] {
+    const grouped: { msg: Message; platforms: Platform[] }[] = [];
+    for (const msg of msgs) {
+      const prev = grouped[grouped.length - 1];
+      if (
+        prev &&
+        prev.msg.content === msg.content &&
+        prev.msg.sent_by === msg.sent_by &&
+        prev.msg.direction === "outgoing" &&
+        msg.direction === "outgoing" &&
+        Math.abs(new Date(msg.created_at).getTime() - new Date(prev.msg.created_at).getTime()) < 2000
+      ) {
+        prev.platforms.push(msg.platform as Platform);
+      } else {
+        grouped.push({ msg, platforms: [msg.platform as Platform] });
+      }
+    }
+    return grouped;
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -146,26 +167,25 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
             No messages yet across any platform.
           </div>
         ) : (
-          messages.map((msg) => {
-            const conn = getConnection(msg);
-            return (
-              <div key={msg.id} className="relative">
-                {/* Platform badge */}
-                <div className="absolute -left-1 top-0">
-                  <div className={`platform-${msg.platform} opacity-60`}>
-                    {getPlatformIcon(msg.platform, "w-3 h-3")}
+          groupMessages(messages).map(({ msg, platforms }) => (
+            <div key={msg.id} className="relative">
+              {/* Platform badge(s) */}
+              <div className="absolute -left-1 top-0 flex flex-col gap-0.5">
+                {platforms.map((p, i) => (
+                  <div key={i} className={`platform-${p} opacity-60`}>
+                    {getPlatformIcon(p, "w-3 h-3")}
                   </div>
-                </div>
-                <div className="pl-4">
-                  <MessageBubble
-                    message={msg}
-                    currentUserId={userId}
-                    preferredLanguage={preferredLanguage}
-                  />
-                </div>
+                ))}
               </div>
-            );
-          })
+              <div className="pl-4">
+                <MessageBubble
+                  message={msg}
+                  currentUserId={userId}
+                  preferredLanguage={preferredLanguage}
+                />
+              </div>
+            </div>
+          ))
         )}
         <div ref={bottomRef} />
       </div>

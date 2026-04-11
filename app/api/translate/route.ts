@@ -24,8 +24,7 @@ export async function POST(req: NextRequest) {
           translated_content: result.translatedText,
           translated_language: targetLanguage,
         })
-        .eq("id", messageId)
-        .eq("user_id", user.id);
+        .eq("id", messageId);
     }
 
     return NextResponse.json({
