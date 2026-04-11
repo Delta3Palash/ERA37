@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu } from "lucide-react";
@@ -22,7 +22,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { toggle } = useSidebar();
 
@@ -45,7 +45,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
           table: "messages",
           filter: `connection_id=eq.${connection.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           const newMsg = payload.new as Message;
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
@@ -87,7 +87,18 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [connection.id, autoTranslate]);
+  }, [connection.id]);
+
+  // Refetch messages when tab becomes visible (handles WebSocket drops)
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        loadMessages();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [connection.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
