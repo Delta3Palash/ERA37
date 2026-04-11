@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     }
 
     const results = await Promise.allSettled(
-      connections.map(async (conn) => {
+      connections.map(async (conn: any) => {
         const result = await sendMessage(conn, conn.platform_channel_id, platformContent);
 
         const { data: message, error } = await serviceClient
