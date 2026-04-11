@@ -7,19 +7,9 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { connectionId, content } = await req.json();
+  const { connectionId, connectionIds, content } = await req.json();
 
-  // Use service client to read connection (bot_token) since RLS limits user access
   const serviceClient = createServiceClient();
-  const { data: connection } = await serviceClient
-    .from("connections")
-    .select("*")
-    .eq("id", connectionId)
-    .single();
-
-  if (!connection) {
-    return NextResponse.json({ error: "Connection not found" }, { status: 404 });
-  }
 
   // Get or create user profile for sender name
   let { data: profile } = await supabase
@@ -28,7 +18,6 @@ export async function POST(req: NextRequest) {
     .eq("id", user.id)
     .single();
 
-  // Create profile if it doesn't exist (safety net for FK constraint)
   if (!profile) {
     const { data: created } = await serviceClient
       .from("profiles")
@@ -45,13 +34,73 @@ export async function POST(req: NextRequest) {
     profile = created;
   }
 
+  const senderName = profile?.display_name || "User";
+  const platformContent = `[${senderName}] ${content}`;
+
+  // Batch send: connectionIds array
+  if (connectionIds && Array.isArray(connectionIds)) {
+    const { data: connections } = await serviceClient
+      .from("connections")
+      .select("*")
+      .in("id", connectionIds);
+
+    if (!connections?.length) {
+      return NextResponse.json({ error: "No connections found" }, { status: 404 });
+    }
+
+    const results = await Promise.allSettled(
+      connections.map(async (conn) => {
+        const result = await sendMessage(conn, conn.platform_channel_id, platformContent);
+
+        const { data: message, error } = await serviceClient
+          .from("messages")
+          .insert({
+            connection_id: conn.id,
+            platform: conn.platform,
+            platform_message_id: result.platform_message_id,
+            platform_channel_id: conn.platform_channel_id,
+            sender_name: senderName,
+            sender_avatar: profile?.avatar_url,
+            content,
+            direction: "outgoing",
+            sent_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        return message;
+      })
+    );
+
+    const succeeded = results
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+      .map((r) => r.value);
+    const failed = results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r, i) => ({ connection: connections[i]?.platform, error: r.reason?.message }));
+
+    if (failed.length) {
+      console.error("Partial send failures:", failed);
+    }
+
+    return NextResponse.json({ messages: succeeded, failed });
+  }
+
+  // Single send: connectionId (existing behavior)
+  const { data: connection } = await serviceClient
+    .from("connections")
+    .select("*")
+    .eq("id", connectionId)
+    .single();
+
+  if (!connection) {
+    return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+  }
+
   try {
-    // Prefix message with username so recipients on the platform know who sent it
-    const senderName = profile?.display_name || "User";
-    const platformContent = `[${senderName}] ${content}`;
     const result = await sendMessage(connection, connection.platform_channel_id, platformContent);
 
-    // Save to DB using service client (needs to insert for all users to see)
     const { data: message, error } = await serviceClient
       .from("messages")
       .insert({
@@ -59,7 +108,7 @@ export async function POST(req: NextRequest) {
         platform: connection.platform,
         platform_message_id: result.platform_message_id,
         platform_channel_id: connection.platform_channel_id,
-        sender_name: profile?.display_name || "User",
+        sender_name: senderName,
         sender_avatar: profile?.avatar_url,
         content,
         direction: "outgoing",

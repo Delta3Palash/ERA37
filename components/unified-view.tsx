@@ -19,6 +19,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<Connection | null>(connections[0] || null);
+  const [sendAll, setSendAll] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
 
@@ -73,26 +74,30 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() || sending || !replyTo) return;
+    if (!input.trim() || sending || (!replyTo && !sendAll)) return;
 
     setSending(true);
     try {
+      const body = sendAll
+        ? { connectionIds: connections.map((c) => c.id), content: input.trim() }
+        : { connectionId: replyTo!.id, content: input.trim() };
+
       const res = await fetch("/api/messages/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          connectionId: replyTo.id,
-          content: input.trim(),
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
         console.error("Send failed:", await res.json());
       } else {
-        const msg = await res.json();
+        const data = await res.json();
+        // Batch response returns { messages, failed }
+        const newMessages = sendAll ? data.messages : [data];
         setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
+          const ids = new Set(prev.map((m) => m.id));
+          const unique = newMessages.filter((m: Message) => !ids.has(m.id));
+          return [...prev, ...unique];
         });
       }
       setInput("");
@@ -172,13 +177,27 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
       >
         {/* Platform selector */}
         <div className="flex gap-1">
+          {connections.length > 1 && (
+            <button
+              type="button"
+              onClick={() => { setSendAll(true); setReplyTo(null); }}
+              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                sendAll
+                  ? "bg-accent/20 ring-1 ring-accent text-accent"
+                  : "hover:bg-surface-hover opacity-50 text-muted"
+              }`}
+              title="Send to all channels"
+            >
+              All
+            </button>
+          )}
           {connections.map((conn) => (
             <button
               key={conn.id}
               type="button"
-              onClick={() => setReplyTo(conn)}
+              onClick={() => { setReplyTo(conn); setSendAll(false); }}
               className={`p-1.5 rounded-lg transition-colors ${
-                replyTo?.id === conn.id
+                sendAll || replyTo?.id === conn.id
                   ? "bg-accent/20 ring-1 ring-accent"
                   : "hover:bg-surface-hover opacity-50"
               } platform-${conn.platform}`}
@@ -193,13 +212,13 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
+          placeholder={sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
           className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
-          disabled={sending || !replyTo}
+          disabled={sending || (!replyTo && !sendAll)}
         />
         <button
           type="submit"
-          disabled={!input.trim() || sending || !replyTo}
+          disabled={!input.trim() || sending || (!replyTo && !sendAll)}
           className="p-2.5 rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors disabled:opacity-30"
         >
           <Send className="w-4 h-4" />
