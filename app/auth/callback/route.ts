@@ -35,10 +35,10 @@ export async function GET(req: NextRequest) {
       {
         id: user.id,
         display_name:
+          meta.custom_claims?.global_name ||
           meta.full_name ||
           meta.name ||
           meta.display_name ||
-          meta.custom_claims?.global_name ||
           meta.username ||
           user.email ||
           "User",
