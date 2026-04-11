@@ -9,14 +9,11 @@ interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
   preferredLanguage: string;
-  autoTranslate?: boolean;
 }
 
-export function MessageBubble({ message, currentUserId, preferredLanguage, autoTranslate }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage }: MessageBubbleProps) {
   const [translatedText, setTranslatedText] = useState(message.translated_content);
-  const [showTranslation, setShowTranslation] = useState(
-    !!(autoTranslate && message.translated_content)
-  );
+  const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
 
   const isOutgoing = message.direction === "outgoing" && message.sent_by === currentUserId;

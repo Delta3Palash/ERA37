@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu } from "lucide-react";
@@ -13,10 +13,9 @@ interface UnifiedViewProps {
   userId: string;
   userName: string;
   preferredLanguage: string;
-  autoTranslate: boolean;
 }
 
-export function UnifiedView({ connections, userId, userName, preferredLanguage, autoTranslate }: UnifiedViewProps) {
+export function UnifiedView({ connections, userId, userName, preferredLanguage }: UnifiedViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -26,59 +25,11 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
   const supabase = useMemo(() => createClient(), []);
   const { toggle } = useSidebar();
 
-  // Refs to avoid stale closures in Realtime callbacks
-  const autoTranslateRef = useRef(autoTranslate);
-  const preferredLanguageRef = useRef(preferredLanguage);
-  autoTranslateRef.current = autoTranslate;
-  preferredLanguageRef.current = preferredLanguage;
-
   const connectionIds = useMemo(() => connections.map((c) => c.id).join(","), [connections]);
 
   // Realtime subscriptions
   useEffect(() => {
     loadMessages();
-
-    function handleNewMessage(payload: any) {
-      const newMsg = payload.new as Message;
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-      });
-
-      // Auto-translate incoming and bridged messages if enabled
-      if (
-        autoTranslateRef.current &&
-        (newMsg.direction === "incoming" || newMsg.direction === "bridged") &&
-        !newMsg.translated_content &&
-        newMsg.content
-      ) {
-        const targetLang = preferredLanguageRef.current;
-        fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messageId: newMsg.id,
-            text: newMsg.content,
-            targetLanguage: targetLang,
-          }),
-        })
-          .then((res) => res.ok ? res.json() : null)
-          .then((data) => {
-            if (data?.translatedText) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === newMsg.id
-                    ? { ...m, translated_content: data.translatedText, translated_language: targetLang }
-                    : m
-                )
-              );
-            }
-          })
-          .catch((err) => console.error("Auto-translate error:", err));
-      }
-    }
 
     // Subscribe to all connections
     const channels = connections.map((conn) =>
@@ -92,7 +43,15 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
             table: "messages",
             filter: `connection_id=eq.${conn.id}`,
           },
-          handleNewMessage
+          (payload: any) => {
+            const newMsg = payload.new as Message;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg].sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+            });
+          }
         )
         .subscribe()
     );
@@ -247,7 +206,6 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage, 
                   message={msg}
                   currentUserId={userId}
                   preferredLanguage={preferredLanguage}
-                  autoTranslate={autoTranslate}
                 />
               </div>
             </div>

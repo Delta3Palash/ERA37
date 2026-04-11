@@ -14,10 +14,9 @@ interface ConversationViewProps {
   userId: string;
   userName: string;
   preferredLanguage: string;
-  autoTranslate: boolean;
 }
 
-export function ConversationView({ connection, userId, userName, preferredLanguage, autoTranslate }: ConversationViewProps) {
+export function ConversationView({ connection, userId, userName, preferredLanguage }: ConversationViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -25,12 +24,6 @@ export function ConversationView({ connection, userId, userName, preferredLangua
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { toggle } = useSidebar();
-
-  // Refs to avoid stale closures in Realtime callbacks
-  const autoTranslateRef = useRef(autoTranslate);
-  const preferredLanguageRef = useRef(preferredLanguage);
-  autoTranslateRef.current = autoTranslate;
-  preferredLanguageRef.current = preferredLanguage;
 
   useEffect(() => {
     loadMessages();
@@ -51,37 +44,6 @@ export function ConversationView({ connection, userId, userName, preferredLangua
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
-
-          if (
-            autoTranslateRef.current &&
-            (newMsg.direction === "incoming" || newMsg.direction === "bridged") &&
-            !newMsg.translated_content &&
-            newMsg.content
-          ) {
-            const targetLang = preferredLanguageRef.current;
-            fetch("/api/translate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                messageId: newMsg.id,
-                text: newMsg.content,
-                targetLanguage: targetLang,
-              }),
-            })
-              .then((res) => res.ok ? res.json() : null)
-              .then((data) => {
-                if (data?.translatedText) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === newMsg.id
-                        ? { ...m, translated_content: data.translatedText, translated_language: targetLang }
-                        : m
-                    )
-                  );
-                }
-              })
-              .catch((err) => console.error("Auto-translate error:", err));
-          }
         }
       )
       .subscribe();
@@ -189,7 +151,6 @@ export function ConversationView({ connection, userId, userName, preferredLangua
               message={msg}
               currentUserId={userId}
               preferredLanguage={preferredLanguage}
-              autoTranslate={autoTranslate}
             />
           ))
         )}

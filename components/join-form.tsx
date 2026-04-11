@@ -10,11 +10,18 @@ export function JoinForm() {
   const searchParams = useSearchParams();
   const inviteCode = searchParams.get("code") || "";
   const mode = searchParams.get("mode");
+  const authError = searchParams.get("error");
   const isLoginMode = mode === "login" && !inviteCode;
   const [code, setCode] = useState(inviteCode);
   const [step, setStep] = useState<"code" | "auth">(inviteCode || isLoginMode ? "auth" : "code");
   const [isLogin, setIsLogin] = useState(isLoginMode);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    authError === "no_account"
+      ? "No account found. Please join with an invite code first."
+      : authError === "auth_failed"
+        ? "Authentication failed. Please try again."
+        : ""
+  );
   const [loading, setLoading] = useState("");
   const [showEmail, setShowEmail] = useState(false);
   const [email, setEmail] = useState("");
@@ -43,10 +50,14 @@ export function JoinForm() {
 
   async function signInWith(provider: "discord" | "google" | "slack_oidc") {
     setLoading(provider);
+    // Pass signup=1 flag so the callback knows this user came through invite code validation
+    const callbackUrl = isLogin
+      ? `${window.location.origin}/auth/callback`
+      : `${window.location.origin}/auth/callback?signup=1`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callbackUrl,
       },
     });
     if (error) {

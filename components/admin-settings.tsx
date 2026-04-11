@@ -17,7 +17,6 @@ interface AdminSettingsProps {
 
 export function AdminSettings({ profile, connections, workspace, userId }: AdminSettingsProps) {
   const [language, setLanguage] = useState(profile.preferred_language);
-  const [autoTranslate, setAutoTranslate] = useState(profile.auto_translate ?? false);
   const [bridgeEnabled, setBridgeEnabled] = useState(workspace?.bridge_enabled ?? false);
   const supabase = createClient();
   const router = useRouter();
@@ -25,11 +24,6 @@ export function AdminSettings({ profile, connections, workspace, userId }: Admin
   async function saveLanguage(lang: string) {
     setLanguage(lang);
     await supabase.from("profiles").update({ preferred_language: lang }).eq("id", userId);
-  }
-
-  async function saveAutoTranslate(enabled: boolean) {
-    setAutoTranslate(enabled);
-    await supabase.from("profiles").update({ auto_translate: enabled }).eq("id", userId);
   }
 
   async function saveBridgeEnabled(enabled: boolean) {
@@ -60,20 +54,6 @@ export function AdminSettings({ profile, connections, workspace, userId }: Admin
             <option key={lang.code} value={lang.code}>{lang.name}</option>
           ))}
         </select>
-
-        <label className="flex items-center gap-3 mt-4 cursor-pointer">
-          <div className="relative">
-            <input
-              type="checkbox"
-              checked={autoTranslate}
-              onChange={(e) => saveAutoTranslate(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-9 h-5 bg-border rounded-full peer peer-checked:bg-accent transition-colors" />
-            <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-foreground rounded-full transition-transform peer-checked:translate-x-4" />
-          </div>
-          <span className="text-sm">Auto-translate incoming messages</span>
-        </label>
       </section>
 
       {/* Message Bridging */}
