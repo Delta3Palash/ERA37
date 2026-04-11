@@ -85,14 +85,17 @@ function startBot(connection) {
       imageUrl = imageAttachment.url;
     }
 
-    if (!message.content && !imageUrl) return;
+    // cleanContent resolves <@ID> mentions to @DisplayName, <#ID> to #channel-name, etc.
+    const content = message.cleanContent || message.content || null;
+
+    if (!content && !imageUrl) return;
 
     const payload = {
       connectionId: connection.id,
       channelId: message.channel.id,
       senderName: message.author.displayName || message.author.username,
       senderAvatar: message.author.displayAvatarURL({ size: 64 }),
-      content: message.content || null,
+      content,
       imageUrl,
       messageId: message.id,
     };
