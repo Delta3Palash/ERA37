@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
-import { Send } from "lucide-react";
+import { Send, Menu } from "lucide-react";
 import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
+import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Message, Platform } from "@/lib/types";
 
 interface UnifiedViewProps {
@@ -22,6 +23,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const [sendAll, setSendAll] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+  const { toggle } = useSidebar();
 
   useEffect(() => {
     loadMessages();
@@ -145,6 +147,12 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
+        <button
+          onClick={toggle}
+          className="md:hidden p-1 rounded hover:bg-surface-hover text-muted"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
         <div className="flex -space-x-1">
           {connections.map((c) => (
             <div key={c.id} className={`platform-${c.platform}`}>

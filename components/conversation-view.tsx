@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
-import { Send, ArrowLeft } from "lucide-react";
+import { Send, Menu } from "lucide-react";
+import { useSidebar } from "./chat-layout-wrapper";
 import { TelegramIcon, DiscordIcon, SlackIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
 import type { Connection, Message, Platform } from "@/lib/types";
@@ -22,6 +23,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const router = useRouter();
+  const { toggle } = useSidebar();
 
   useEffect(() => {
     loadMessages();
@@ -108,10 +110,10 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
         <button
-          onClick={() => router.push("/chat")}
+          onClick={toggle}
           className="md:hidden p-1 rounded hover:bg-surface-hover text-muted"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <Menu className="w-5 h-5" />
         </button>
         <div className={`platform-${connection.platform}`}>
           {getPlatformIcon(connection.platform)}

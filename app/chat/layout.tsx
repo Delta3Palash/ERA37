@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ChatSidebar } from "@/components/chat-sidebar";
+import { ChatLayoutWrapper } from "@/components/chat-layout-wrapper";
 
 export default async function ChatLayout({
   children,
@@ -25,7 +26,7 @@ export default async function ChatLayout({
     .order("platform");
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <ChatLayoutWrapper>
       <ChatSidebar
         userId={user.id}
         profile={profile}
@@ -35,6 +36,6 @@ export default async function ChatLayout({
       <main className="flex-1 flex flex-col overflow-hidden">
         {children}
       </main>
-    </div>
+    </ChatLayoutWrapper>
   );
 }

@@ -108,12 +108,12 @@ export function MessageBubble({ message, currentUserId, preferredLanguage }: Mes
           <button
             onClick={handleTranslate}
             disabled={translating}
-            className={`text-muted hover:text-accent transition-colors ${
-              showTranslation ? "text-accent" : ""
+            className={`flex items-center gap-0.5 text-[10px] transition-colors ${
+              showTranslation ? "text-accent" : "text-muted hover:text-accent"
             }`}
             title="Translate"
           >
-            <Languages className={`w-3 h-3 ${translating ? "animate-pulse" : ""}`} />
+            <Languages className={`w-3.5 h-3.5 ${translating ? "animate-pulse" : ""}`} />
           </button>
         )}
       </div>
