@@ -104,7 +104,7 @@ export function MessageBubble({ message, currentUserId, preferredLanguage }: Mes
         <span className="text-[10px] text-muted">
           {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
         </span>
-        {message.content && !isOutgoing && (
+        {message.content && (
           <button
             onClick={handleTranslate}
             disabled={translating}

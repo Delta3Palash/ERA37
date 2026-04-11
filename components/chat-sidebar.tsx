@@ -76,9 +76,25 @@ export function ChatSidebar({ userId, profile, connections, isAdmin }: ChatSideb
 
       {/* Channel list */}
       <div className="flex-1 overflow-y-auto">
-        <div className="px-3 py-2">
+        {/* Unified view */}
+        {activeConnections.length > 0 && (
+          <button
+            onClick={() => router.push("/chat/all")}
+            className={`w-full text-left p-3 flex items-center gap-3 hover:bg-surface-hover transition-colors ${
+              pathname === "/chat/all" ? "bg-surface-hover border-l-2 border-accent" : "border-l-2 border-transparent"
+            }`}
+          >
+            <MessageSquare className="w-5 h-5 text-accent" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-semibold truncate block">All Messages</span>
+              <span className="text-xs text-muted">Unified timeline</span>
+            </div>
+          </button>
+        )}
+
+        <div className="px-3 pt-3 pb-1">
           <span className="text-xs font-medium text-muted uppercase tracking-wider">
-            Channels
+            Platforms
           </span>
         </div>
 
