@@ -38,7 +38,7 @@ export function JoinForm() {
     setStep("auth");
   }
 
-  async function signInWith(provider: "discord" | "google" | "slack") {
+  async function signInWith(provider: "discord" | "google" | "slack_oidc") {
     setLoading(provider);
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -137,12 +137,12 @@ export function JoinForm() {
           </button>
 
           <button
-            onClick={() => signInWith("slack")}
+            onClick={() => signInWith("slack_oidc")}
             disabled={!!loading}
             className="w-full py-3 px-4 rounded-lg bg-[#4A154B] text-white font-medium flex items-center justify-center gap-3 hover:bg-[#3B1139] transition-colors disabled:opacity-50"
           >
             <SlackIcon className="w-5 h-5" />
-            {loading === "slack" ? "Redirecting..." : "Continue with Slack"}
+            {loading === "slack_oidc" ? "Redirecting..." : "Continue with Slack"}
           </button>
 
           <div className="relative">
