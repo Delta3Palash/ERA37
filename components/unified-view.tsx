@@ -138,6 +138,10 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     return connections.find((c) => c.id === msg.connection_id);
   }
 
+  // In unified view, hide bridged messages (they're duplicates of the original incoming)
+  // Bridged copies are only useful in per-platform conversation views
+  const visibleMessages = messages.filter((m) => m.direction !== "bridged");
+
   // Group broadcast messages (same content, same sender, within 2s)
   function groupMessages(msgs: Message[]): { msg: Message; platforms: Platform[] }[] {
     const grouped: { msg: Message; platforms: Platform[] }[] = [];
@@ -186,12 +190,12 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <div className="text-center text-muted text-sm py-8">
             No messages yet across any platform.
           </div>
         ) : (
-          groupMessages(messages).map(({ msg, platforms }) => (
+          groupMessages(visibleMessages).map(({ msg, platforms }) => (
             <div key={msg.id} className="relative">
               {/* Platform badge(s) */}
               <div className="absolute -left-1 top-0 flex flex-col gap-0.5">
