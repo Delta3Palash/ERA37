@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu, Image } from "lucide-react";
 import { GifPicker } from "./gif-picker";
-import { isTenorConfigured } from "@/lib/tenor";
+import { isGifConfigured } from "@/lib/tenor";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Message, Platform } from "@/lib/types";
@@ -299,7 +299,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
             className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
             disabled={sending || (!replyTo && !sendAll)}
           />
-          {isTenorConfigured() && (
+          {isGifConfigured() && (
             <button
               type="button"
               onClick={() => setShowGifPicker(!showGifPicker)}

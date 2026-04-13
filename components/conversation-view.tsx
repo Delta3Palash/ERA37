@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu } from "lucide-react";
 import { GifPicker } from "./gif-picker";
-import { isTenorConfigured } from "@/lib/tenor";
+import { isGifConfigured } from "@/lib/tenor";
 import { useSidebar } from "./chat-layout-wrapper";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
@@ -198,7 +198,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
             className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
             disabled={sending}
           />
-          {isTenorConfigured() && (
+          {isGifConfigured() && (
             <button
               type="button"
               onClick={() => setShowGifPicker(!showGifPicker)}

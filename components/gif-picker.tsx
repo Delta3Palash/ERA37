@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { searchGifs, getTrendingGifs, type TenorGif } from "@/lib/tenor";
+import { searchGifs, getTrendingGifs, type GifItem } from "@/lib/tenor";
 import { Search, X } from "lucide-react";
 
 interface GifPickerProps {
@@ -11,7 +11,7 @@ interface GifPickerProps {
 
 export function GifPicker({ onSelect, onClose }: GifPickerProps) {
   const [query, setQuery] = useState("");
-  const [gifs, setGifs] = useState<TenorGif[]>([]);
+  const [gifs, setGifs] = useState<GifItem[]>([]);
   const [loading, setLoading] = useState(true);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -130,7 +130,7 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
 
       {/* Attribution */}
       <div className="px-3 py-1.5 border-t border-border text-center">
-        <span className="text-[10px] text-muted">Powered by Tenor</span>
+        <span className="text-[10px] text-muted">Powered by KLIPY</span>
       </div>
     </div>
   );
