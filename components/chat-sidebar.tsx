@@ -9,6 +9,8 @@ import {
   LogOut,
   Hash,
   Globe,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
@@ -23,6 +25,7 @@ interface ChatSidebarProps {
 
 export function ChatSidebar({ userId, profile, connections, isAdmin }: ChatSidebarProps) {
   const [activeConnections, setActiveConnections] = useState(connections);
+  const [platformsOpen, setPlatformsOpen] = useState(false);
   const supabase = createClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -114,12 +117,6 @@ export function ChatSidebar({ userId, profile, connections, isAdmin }: ChatSideb
             </button>
           )}
 
-          <div className="px-3 pt-3 pb-1">
-            <span className="text-xs font-medium text-muted uppercase tracking-wider">
-              Platforms
-            </span>
-          </div>
-
           {activeConnections.length === 0 ? (
             <div className="p-4 text-center text-muted text-sm">
               <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -131,28 +128,45 @@ export function ChatSidebar({ userId, profile, connections, isAdmin }: ChatSideb
               )}
             </div>
           ) : (
-            activeConnections.map((conn) => {
-              const isActive = pathname === `/chat/${conn.id}`;
-              return (
-                <button
-                  key={conn.id}
-                  onClick={() => navigate(`/chat/${conn.id}`)}
-                  className={`w-full text-left p-3 flex items-center gap-3 hover:bg-surface-hover transition-colors ${
-                    isActive ? "bg-surface-hover border-l-2 border-accent" : "border-l-2 border-transparent"
-                  }`}
-                >
-                  <div className={`platform-${conn.platform}`}>
-                    {getPlatformIcon(conn.platform, "w-5 h-5")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium truncate block">
-                      {conn.channel_name || `${conn.platform} channel`}
-                    </span>
-                    <span className="text-xs text-muted capitalize">{conn.platform}</span>
-                  </div>
-                </button>
-              );
-            })
+            <>
+              <button
+                onClick={() => setPlatformsOpen(!platformsOpen)}
+                className="w-full text-left px-3 pt-3 pb-1 flex items-center gap-1 group"
+              >
+                {platformsOpen ? (
+                  <ChevronDown className="w-3 h-3 text-muted" />
+                ) : (
+                  <ChevronRight className="w-3 h-3 text-muted" />
+                )}
+                <span className="text-xs font-medium text-muted uppercase tracking-wider group-hover:text-foreground transition-colors">
+                  Platforms ({activeConnections.length})
+                </span>
+              </button>
+
+              {platformsOpen &&
+                activeConnections.map((conn) => {
+                  const isActive = pathname === `/chat/${conn.id}`;
+                  return (
+                    <button
+                      key={conn.id}
+                      onClick={() => navigate(`/chat/${conn.id}`)}
+                      className={`w-full text-left p-3 pl-6 flex items-center gap-3 hover:bg-surface-hover transition-colors ${
+                        isActive ? "bg-surface-hover border-l-2 border-accent" : "border-l-2 border-transparent"
+                      }`}
+                    >
+                      <div className={`platform-${conn.platform}`}>
+                        {getPlatformIcon(conn.platform, "w-4 h-4")}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">
+                          {conn.channel_name || `${conn.platform} channel`}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              }
+            </>
           )}
         </div>
 
