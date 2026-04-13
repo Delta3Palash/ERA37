@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { connectionId, connectionIds, content } = await req.json();
+  const { connectionId, connectionIds, content, imageUrl } = await req.json();
 
   const serviceClient = createServiceClient();
 
@@ -35,7 +35,11 @@ export async function POST(req: NextRequest) {
   }
 
   const senderName = profile?.display_name || "User";
-  const platformContent = `[${senderName}] ${content}`;
+  const platformContent = content
+    ? `[${senderName}] ${content}`
+    : imageUrl
+      ? `[${senderName}] ${imageUrl}`
+      : `[${senderName}]`;
 
   // Batch send: connectionIds array
   if (connectionIds && Array.isArray(connectionIds)) {
@@ -61,9 +65,11 @@ export async function POST(req: NextRequest) {
             platform_channel_id: conn.platform_channel_id,
             sender_name: senderName,
             sender_avatar: profile?.avatar_url,
-            content,
+            content: content || null,
+            image_url: imageUrl || null,
             direction: "outgoing",
             sent_by: user.id,
+            message_type: imageUrl ? "image" : "text",
           })
           .select()
           .single();
@@ -110,9 +116,11 @@ export async function POST(req: NextRequest) {
         platform_channel_id: connection.platform_channel_id,
         sender_name: senderName,
         sender_avatar: profile?.avatar_url,
-        content,
+        content: content || null,
+        image_url: imageUrl || null,
         direction: "outgoing",
         sent_by: user.id,
+        message_type: imageUrl ? "image" : "text",
       })
       .select()
       .single();

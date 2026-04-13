@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu } from "lucide-react";
+import { GifPicker } from "./gif-picker";
+import { isTenorConfigured } from "@/lib/tenor";
 import { useSidebar } from "./chat-layout-wrapper";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
@@ -20,6 +22,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -106,6 +109,28 @@ export function ConversationView({ connection, userId, userName, preferredLangua
     }
   }
 
+  async function handleGifSelect(gifUrl: string) {
+    setShowGifPicker(false);
+    setSending(true);
+    try {
+      const res = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          connectionId: connection.id,
+          content: "",
+          imageUrl: gifUrl,
+        }),
+      });
+      if (res.ok) {
+        const msg = await res.json();
+        setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
   function getPlatformIcon(platform: Platform) {
     switch (platform) {
       case "telegram": return <TelegramIcon className="w-5 h-5" />;
@@ -157,26 +182,46 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       </div>
 
       {/* Input */}
-      <form
-        onSubmit={handleSend}
-        className="flex items-center gap-2 px-4 py-3 border-t border-border bg-surface"
-      >
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={`Message #${connection.channel_name || connection.platform}...`}
-          className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
-          disabled={sending}
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || sending}
-          className="p-2.5 rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors disabled:opacity-30"
+      <div className="relative border-t border-border bg-surface">
+        {showGifPicker && (
+          <GifPicker onSelect={handleGifSelect} onClose={() => setShowGifPicker(false)} />
+        )}
+        <form
+          onSubmit={handleSend}
+          className="flex items-center gap-2 px-4 py-3"
         >
-          <Send className="w-4 h-4" />
-        </button>
-      </form>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={`Message #${connection.channel_name || connection.platform}...`}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
+            disabled={sending}
+          />
+          {isTenorConfigured() && (
+            <button
+              type="button"
+              onClick={() => setShowGifPicker(!showGifPicker)}
+              disabled={sending}
+              className={`px-2 py-2 rounded-lg text-xs font-bold transition-colors ${
+                showGifPicker
+                  ? "bg-accent/20 text-accent"
+                  : "text-muted hover:text-foreground hover:bg-surface-hover"
+              } disabled:opacity-30`}
+              title="Send a GIF"
+            >
+              GIF
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={!input.trim() || sending}
+            className="p-2.5 rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors disabled:opacity-30"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

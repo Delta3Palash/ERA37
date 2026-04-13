@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
-import { Send, Menu } from "lucide-react";
+import { Send, Menu, Image } from "lucide-react";
+import { GifPicker } from "./gif-picker";
+import { isTenorConfigured } from "@/lib/tenor";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Message, Platform } from "@/lib/types";
@@ -21,6 +23,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<Connection | null>(connections[0] || null);
   const [sendAll, setSendAll] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
   const { toggle } = useSidebar();
@@ -125,6 +128,33 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     }
   }
 
+  async function handleGifSelect(gifUrl: string) {
+    setShowGifPicker(false);
+    if (!replyTo && !sendAll) return;
+    setSending(true);
+    try {
+      const body = sendAll
+        ? { connectionIds: connections.map((c) => c.id), content: "", imageUrl: gifUrl }
+        : { connectionId: replyTo!.id, content: "", imageUrl: gifUrl };
+      const res = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newMessages = sendAll ? data.messages : [data];
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id));
+          const unique = newMessages.filter((m: Message) => !ids.has(m.id));
+          return [...prev, ...unique];
+        });
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
   function getPlatformIcon(platform: Platform, size = "w-4 h-4") {
     switch (platform) {
       case "telegram": return <TelegramIcon className={size} />;
@@ -220,59 +250,79 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
       </div>
 
       {/* Input with platform selector */}
-      <form
-        onSubmit={handleSend}
-        className="flex items-center gap-2 px-4 py-3 border-t border-border bg-surface"
-      >
-        {/* Platform selector */}
-        <div className="flex gap-1">
-          {connections.length > 1 && (
+      <div className="relative border-t border-border bg-surface">
+        {showGifPicker && (
+          <GifPicker onSelect={handleGifSelect} onClose={() => setShowGifPicker(false)} />
+        )}
+        <form
+          onSubmit={handleSend}
+          className="flex items-center gap-2 px-4 py-3"
+        >
+          {/* Platform selector */}
+          <div className="flex gap-1">
+            {connections.length > 1 && (
+              <button
+                type="button"
+                onClick={() => { setSendAll(true); setReplyTo(null); }}
+                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  sendAll
+                    ? "bg-accent/20 ring-1 ring-accent text-accent"
+                    : "hover:bg-surface-hover opacity-50 text-muted"
+                }`}
+                title="Send to all channels"
+              >
+                All
+              </button>
+            )}
+            {connections.map((conn) => (
+              <button
+                key={conn.id}
+                type="button"
+                onClick={() => { setReplyTo(conn); setSendAll(false); }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  sendAll || replyTo?.id === conn.id
+                    ? "bg-accent/20 ring-1 ring-accent"
+                    : "hover:bg-surface-hover opacity-50"
+                } platform-${conn.platform}`}
+                title={`Send to ${conn.channel_name}`}
+              >
+                {getPlatformIcon(conn.platform)}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
+            disabled={sending || (!replyTo && !sendAll)}
+          />
+          {isTenorConfigured() && (
             <button
               type="button"
-              onClick={() => { setSendAll(true); setReplyTo(null); }}
-              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                sendAll
-                  ? "bg-accent/20 ring-1 ring-accent text-accent"
-                  : "hover:bg-surface-hover opacity-50 text-muted"
-              }`}
-              title="Send to all channels"
+              onClick={() => setShowGifPicker(!showGifPicker)}
+              disabled={sending || (!replyTo && !sendAll)}
+              className={`px-2 py-2 rounded-lg text-xs font-bold transition-colors ${
+                showGifPicker
+                  ? "bg-accent/20 text-accent"
+                  : "text-muted hover:text-foreground hover:bg-surface-hover"
+              } disabled:opacity-30`}
+              title="Send a GIF"
             >
-              All
+              GIF
             </button>
           )}
-          {connections.map((conn) => (
-            <button
-              key={conn.id}
-              type="button"
-              onClick={() => { setReplyTo(conn); setSendAll(false); }}
-              className={`p-1.5 rounded-lg transition-colors ${
-                sendAll || replyTo?.id === conn.id
-                  ? "bg-accent/20 ring-1 ring-accent"
-                  : "hover:bg-surface-hover opacity-50"
-              } platform-${conn.platform}`}
-              title={`Send to ${conn.channel_name}`}
-            >
-              {getPlatformIcon(conn.platform)}
-            </button>
-          ))}
-        </div>
-
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
-          className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
-          disabled={sending || (!replyTo && !sendAll)}
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || sending || (!replyTo && !sendAll)}
-          className="p-2.5 rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors disabled:opacity-30"
-        >
-          <Send className="w-4 h-4" />
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={!input.trim() || sending || (!replyTo && !sendAll)}
+            className="p-2.5 rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors disabled:opacity-30"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
