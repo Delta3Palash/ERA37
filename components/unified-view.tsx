@@ -103,7 +103,11 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
       .in("connection_id", connIds)
       .neq("direction", "bridged")
       .order("created_at", { ascending: true });
-    if (data) setMessages(data);
+    if (data) setMessages((prev) => {
+      // Only update if there are new messages (avoids unnecessary re-renders)
+      if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) return prev;
+      return data;
+    });
   }
 
   async function handleSend(e: React.FormEvent) {

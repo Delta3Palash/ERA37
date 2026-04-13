@@ -85,7 +85,10 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       .select("*")
       .eq("connection_id", connection.id)
       .order("created_at", { ascending: true });
-    if (data) setMessages(data);
+    if (data) setMessages((prev) => {
+      if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) return prev;
+      return data;
+    });
   }
 
   async function handleSend(e: React.FormEvent) {
