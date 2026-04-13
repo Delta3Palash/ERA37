@@ -6,20 +6,25 @@ export async function sendWhatsAppMessage(
   phoneNumberId: string,
   accessToken: string,
   recipientId: string,
-  content: string
+  content: string,
+  replyToMessageId?: string | null
 ): Promise<{ messages: Array<{ id: string }> }> {
+  const body: any = {
+    messaging_product: "whatsapp",
+    to: recipientId,
+    type: "text",
+    text: { body: content },
+  };
+  if (replyToMessageId) {
+    body.context = { message_id: replyToMessageId };
+  }
   const res = await fetch(`${WHATSAPP_API}/${phoneNumberId}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to: recipientId,
-      type: "text",
-      text: { body: content },
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

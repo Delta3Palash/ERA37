@@ -7,25 +7,26 @@ import type { Platform, Connection } from "./types";
 export async function sendMessage(
   connection: Connection,
   channelId: string,
-  content: string
+  content: string,
+  replyToPlatformId?: string | null
 ): Promise<{ platform_message_id: string }> {
   switch (connection.platform) {
     case "telegram": {
-      const result = await sendTelegramMessage(connection.bot_token!, channelId, content);
+      const result = await sendTelegramMessage(connection.bot_token!, channelId, content, replyToPlatformId);
       return { platform_message_id: String(result.result.message_id) };
     }
     case "discord": {
-      const result = await sendDiscordMessage(connection.bot_token!, channelId, content);
+      const result = await sendDiscordMessage(connection.bot_token!, channelId, content, replyToPlatformId);
       return { platform_message_id: result.id };
     }
     case "slack": {
-      const result = await sendSlackMessage(connection.bot_token!, channelId, content);
+      const result = await sendSlackMessage(connection.bot_token!, channelId, content, replyToPlatformId);
       return { platform_message_id: result.ts };
     }
     case "whatsapp": {
       const phoneNumberId = (connection.metadata as any).phone_number_id;
       const accessToken = connection.bot_token!;
-      const result = await sendWhatsAppMessage(phoneNumberId, accessToken, channelId, content);
+      const result = await sendWhatsAppMessage(phoneNumberId, accessToken, channelId, content, replyToPlatformId);
       return { platform_message_id: result.messages[0].id };
     }
     default:

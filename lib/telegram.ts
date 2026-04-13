@@ -3,12 +3,17 @@ const TELEGRAM_API = "https://api.telegram.org/bot";
 export async function sendTelegramMessage(
   botToken: string,
   chatId: string,
-  text: string
+  text: string,
+  replyToMessageId?: string | null
 ) {
+  const body: any = { chat_id: chatId, text };
+  if (replyToMessageId) {
+    body.reply_parameters = { message_id: Number(replyToMessageId) };
+  }
   const res = await fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.text();

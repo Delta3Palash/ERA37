@@ -41,6 +41,35 @@ export async function POST(req: NextRequest) {
       ? `[${senderName}]\n${imageUrl}`
       : `[${senderName}]`;
 
+  // Look up parent message's platform_message_id for native replies
+  let replyPlatformIds: Map<string, string> | null = null;
+  if (replyToMessageId) {
+    const { data: parentMessages } = await serviceClient
+      .from("messages")
+      .select("connection_id, platform_message_id")
+      .eq("reply_to_message_id", replyToMessageId)
+      .is("platform_message_id", "not.null");
+
+    // Also get the original message itself (it might be the one with the platform IDs)
+    const { data: original } = await serviceClient
+      .from("messages")
+      .select("connection_id, platform_message_id")
+      .eq("id", replyToMessageId)
+      .single();
+
+    replyPlatformIds = new Map();
+    if (original?.platform_message_id) {
+      replyPlatformIds.set(original.connection_id, original.platform_message_id);
+    }
+    if (parentMessages) {
+      for (const pm of parentMessages) {
+        if (pm.platform_message_id) {
+          replyPlatformIds.set(pm.connection_id, pm.platform_message_id);
+        }
+      }
+    }
+  }
+
   // Batch send: connectionIds array
   if (connectionIds && Array.isArray(connectionIds)) {
     const { data: connections } = await serviceClient
@@ -54,7 +83,8 @@ export async function POST(req: NextRequest) {
 
     const results = await Promise.allSettled(
       connections.map(async (conn: any) => {
-        const result = await sendMessage(conn, conn.platform_channel_id, platformContent);
+        const replyToPlatformId = replyPlatformIds?.get(conn.id) || null;
+        const result = await sendMessage(conn, conn.platform_channel_id, platformContent, replyToPlatformId);
 
         const { data: message, error } = await serviceClient
           .from("messages")
@@ -106,7 +136,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await sendMessage(connection, connection.platform_channel_id, platformContent);
+    const replyToPlatformId = replyPlatformIds?.get(connectionId) || null;
+    const result = await sendMessage(connection, connection.platform_channel_id, platformContent, replyToPlatformId);
 
     const { data: message, error } = await serviceClient
       .from("messages")

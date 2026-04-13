@@ -3,15 +3,20 @@ const SLACK_API = "https://slack.com/api";
 export async function sendSlackMessage(
   botToken: string,
   channelId: string,
-  text: string
+  text: string,
+  replyToTs?: string | null
 ) {
+  const body: any = { channel: channelId, text };
+  if (replyToTs) {
+    body.thread_ts = replyToTs;
+  }
   const res = await fetch(`${SLACK_API}/chat.postMessage`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ channel: channelId, text }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.text();

@@ -3,15 +3,20 @@ const DISCORD_API = "https://discord.com/api/v10";
 export async function sendDiscordMessage(
   botToken: string,
   channelId: string,
-  content: string
+  content: string,
+  replyToMessageId?: string | null
 ) {
+  const body: any = { content };
+  if (replyToMessageId) {
+    body.message_reference = { message_id: replyToMessageId };
+  }
   const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bot ${botToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.text();
