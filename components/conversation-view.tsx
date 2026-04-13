@@ -54,7 +54,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
     return () => { supabase.removeChannel(channel); };
   }, [connection.id]);
 
-  // Refetch messages when tab becomes visible (handles WebSocket drops)
+  // Fallback polling + visibility refetch (handles silent WebSocket drops)
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState === "visible") {
@@ -62,7 +62,17 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       }
     }
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
+
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadMessages();
+      }
+    }, 10000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(poll);
+    };
   }, [connection.id]);
 
   useEffect(() => {

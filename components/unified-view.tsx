@@ -67,7 +67,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     };
   }, [connectionIds]);
 
-  // Refetch messages when tab becomes visible (handles WebSocket drops)
+  // Fallback polling + visibility refetch (handles silent WebSocket drops)
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState === "visible") {
@@ -75,7 +75,18 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
       }
     }
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
+
+    // Poll every 10s as a safety net for dropped Realtime connections
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadMessages();
+      }
+    }, 10000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(poll);
+    };
   }, [connectionIds]);
 
   useEffect(() => {
