@@ -35,11 +35,9 @@ export async function POST(req: NextRequest) {
   }
 
   const senderName = profile?.display_name || "User";
-  const platformContent = content
-    ? `[${senderName}] ${content}`
-    : imageUrl
-      ? `[${senderName}]\n${imageUrl}`
-      : `[${senderName}]`;
+  let platformContent = `[${senderName}]`;
+  if (content) platformContent += ` ${content}`;
+  if (imageUrl) platformContent += `\n${imageUrl}`;
 
   // Look up parent message's platform_message_id for native replies
   let replyPlatformIds: Map<string, string> | null = null;
