@@ -2,22 +2,24 @@
 
 import { useState } from "react";
 import { Languages, Check, ArrowRightLeft } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import type { Message } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
   preferredLanguage: string;
+  showHeader?: boolean;
 }
 
-export function MessageBubble({ message, currentUserId, preferredLanguage }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true }: MessageBubbleProps) {
   const [translatedText, setTranslatedText] = useState(message.translated_content);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
 
   const isOutgoing = message.direction === "outgoing" && message.sent_by === currentUserId;
   const isBridged = message.direction === "bridged";
+  const senderName = isOutgoing ? "You" : message.sender_name;
 
   async function handleTranslate() {
     if (translatedText) {
@@ -47,40 +49,55 @@ export function MessageBubble({ message, currentUserId, preferredLanguage }: Mes
     }
   }
 
-  return (
-    <div className={`flex flex-col ${isOutgoing ? "items-end" : "items-start"} mb-2`}>
-      {/* Sender name + avatar for incoming/bridged */}
-      {!isOutgoing && message.sender_name && (
-        <div className="flex items-center gap-1.5 ml-1 mb-0.5">
-          {isBridged && (
-            <ArrowRightLeft className="w-3 h-3 text-muted" />
-          )}
-          {message.sender_avatar && (
-            <img src={message.sender_avatar} alt="" className="w-4 h-4 rounded-full" />
-          )}
-          <span className="text-xs text-muted">
-            {message.sender_name}
-            {isBridged && (message.metadata as any)?.source_platform && (
-              <span className="opacity-60"> via {(message.metadata as any).source_platform}</span>
-            )}
-          </span>
-        </div>
-      )}
+  const timestamp = format(new Date(message.created_at), "h:mm a");
 
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-          isOutgoing
-            ? "bg-accent text-black rounded-br-md"
-            : "bg-surface border border-border rounded-bl-md"
-        }`}
-      >
+  return (
+    <div className={`group flex gap-3 px-4 py-0.5 hover:bg-surface-hover/50 ${showHeader ? "mt-3" : ""}`}>
+      {/* Avatar column */}
+      <div className="w-10 flex-shrink-0">
+        {showHeader ? (
+          message.sender_avatar ? (
+            <img src={message.sender_avatar} alt="" className="w-10 h-10 rounded-full" />
+          ) : (
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
+              isOutgoing ? "bg-accent/20 text-accent" : "bg-surface border border-border text-muted"
+            }`}>
+              {(senderName || "?")[0].toUpperCase()}
+            </div>
+          )
+        ) : (
+          <span className="text-[10px] text-muted opacity-0 group-hover:opacity-100 transition-opacity leading-[1.375rem] block text-right">
+            {format(new Date(message.created_at), "h:mm")}
+          </span>
+        )}
+      </div>
+
+      {/* Content column */}
+      <div className="flex-1 min-w-0">
+        {showHeader && (
+          <div className="flex items-baseline gap-2">
+            <span className={`text-sm font-semibold ${isOutgoing ? "text-accent" : "text-foreground"}`}>
+              {senderName || "Unknown"}
+            </span>
+            {isBridged && (message.metadata as any)?.source_platform && (
+              <span className="text-[10px] text-muted flex items-center gap-0.5">
+                <ArrowRightLeft className="w-2.5 h-2.5 inline" />
+                via {(message.metadata as any).source_platform}
+              </span>
+            )}
+            <span className="text-[10px] text-muted">
+              {timestamp}
+            </span>
+          </div>
+        )}
+
         {/* Image */}
         {message.image_url && (
-          <div className="mb-2">
+          <div className="mt-1">
             <img
               src={message.image_url}
-              alt="Shared image"
-              className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer"
+              alt=""
+              className="rounded-lg max-w-sm max-h-72 object-contain cursor-pointer"
               onClick={() => window.open(message.image_url!, "_blank")}
             />
           </div>
@@ -88,42 +105,38 @@ export function MessageBubble({ message, currentUserId, preferredLanguage }: Mes
 
         {/* Text content */}
         {message.content && (
-          <p className="text-sm whitespace-pre-wrap break-words">
+          <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words leading-relaxed">
             {message.content}
           </p>
         )}
 
         {/* Translation */}
         {showTranslation && translatedText && (
-          <div className={`mt-2 pt-2 border-t ${
-            isOutgoing ? "border-black/20" : "border-border"
-          }`}>
+          <div className="mt-1 pl-3 border-l-2 border-accent/40">
             <p className="text-xs text-muted mb-0.5 flex items-center gap-1">
               <Check className="w-3 h-3" /> Translated
             </p>
-            <p className="text-sm whitespace-pre-wrap break-words opacity-80">
+            <p className="text-sm whitespace-pre-wrap break-words text-foreground/70">
               {translatedText}
             </p>
           </div>
         )}
-      </div>
 
-      {/* Meta: time + translate */}
-      <div className="flex items-center gap-2 mt-0.5 mx-1">
-        <span className="text-[10px] text-muted">
-          {formatDistanceToNow(new Date(message.created_at), { addSuffix: true })}
-        </span>
+        {/* Translate button — shows on hover */}
         {message.content && (
-          <button
-            onClick={handleTranslate}
-            disabled={translating}
-            className={`flex items-center gap-0.5 text-[10px] transition-colors ${
-              showTranslation ? "text-accent" : "text-muted hover:text-accent"
-            }`}
-            title="Translate"
-          >
-            <Languages className={`w-3.5 h-3.5 ${translating ? "animate-pulse" : ""}`} />
-          </button>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+            <button
+              onClick={handleTranslate}
+              disabled={translating}
+              className={`flex items-center gap-1 text-[10px] transition-colors ${
+                showTranslation ? "text-accent" : "text-muted hover:text-accent"
+              }`}
+              title="Translate"
+            >
+              <Languages className={`w-3 h-3 ${translating ? "animate-pulse" : ""}`} />
+              <span>{showTranslation ? "Hide" : "Translate"}</span>
+            </button>
+          </div>
         )}
       </div>
     </div>

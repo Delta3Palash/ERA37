@@ -163,20 +163,30 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+      <div className="flex-1 overflow-y-auto py-4">
         {messages.length === 0 ? (
           <div className="text-center text-muted text-sm py-8">
             No messages yet. Messages from {connection.platform} will appear here.
           </div>
         ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              currentUserId={userId}
-              preferredLanguage={preferredLanguage}
-            />
-          ))
+          messages.map((msg, i) => {
+            const prev = messages[i - 1];
+            const showHeader = !prev ||
+              prev.sender_name !== msg.sender_name ||
+              prev.direction !== msg.direction ||
+              (msg.direction === "outgoing" && prev.sent_by !== msg.sent_by) ||
+              new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
+
+            return (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                currentUserId={userId}
+                preferredLanguage={preferredLanguage}
+                showHeader={showHeader}
+              />
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

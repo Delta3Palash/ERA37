@@ -220,31 +220,30 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+      <div className="flex-1 overflow-y-auto py-4">
         {visibleMessages.length === 0 ? (
           <div className="text-center text-muted text-sm py-8">
             No messages yet across any platform.
           </div>
         ) : (
-          groupMessages(visibleMessages).map(({ msg, platforms }) => (
-            <div key={msg.id} className="relative">
-              {/* Platform badge(s) */}
-              <div className="absolute -left-1 top-0 flex flex-col gap-0.5">
-                {platforms.map((p, i) => (
-                  <div key={i} className={`platform-${p} opacity-60`}>
-                    {getPlatformIcon(p, "w-3 h-3")}
-                  </div>
-                ))}
-              </div>
-              <div className="pl-4">
-                <MessageBubble
-                  message={msg}
-                  currentUserId={userId}
-                  preferredLanguage={preferredLanguage}
-                />
-              </div>
-            </div>
-          ))
+          visibleMessages.map((msg, i) => {
+            const prev = visibleMessages[i - 1];
+            const showHeader = !prev ||
+              prev.sender_name !== msg.sender_name ||
+              prev.direction !== msg.direction ||
+              (msg.direction === "outgoing" && prev.sent_by !== msg.sent_by) ||
+              new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
+
+            return (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                currentUserId={userId}
+                preferredLanguage={preferredLanguage}
+                showHeader={showHeader}
+              />
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

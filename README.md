@@ -8,8 +8,10 @@ Connect Telegram, Discord, Slack, and WhatsApp into a single shared workspace wi
 - **Bidirectional** — Read and reply to messages from any connected platform
 - **Message bridging** — Incoming messages auto-forward to all other connected platforms (toggle per workspace)
 - **Send to All** — Broadcast a message to every connected channel with one click
+- **GIF picker** — Search and send GIFs via KLIPY API (Tenor replacement)
 - **Image support** — Inline image display from all platforms
 - **On-demand translation** — 20+ languages, click-to-translate with cached results
+- **Discord-style UI** — Clean message layout with grouped consecutive messages, hover-to-translate
 - **Shared workspace** — Admin configures one channel per platform, all users see the same conversations
 - **OAuth login** — Sign in with Discord, Google, or Slack
 - **Invite-only access** — Invite code required for first-time signup; returning users sign in directly
@@ -32,6 +34,7 @@ Connect Telegram, Discord, Slack, and WhatsApp into a single shared workspace wi
 | Translation | Google Cloud Translation API v2 |
 | Discord Gateway | discord.js on Railway (persistent WebSocket) |
 | WhatsApp | Meta WhatsApp Cloud API v21.0 |
+| GIFs | KLIPY API (free Tenor replacement) |
 
 ## Architecture
 
@@ -172,6 +175,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 GOOGLE_TRANSLATE_API_KEY=AIza...
 WHATSAPP_APP_SECRET=your-meta-app-secret  # optional, for webhook signature validation
+NEXT_PUBLIC_KLIPY_API_KEY=your-klipy-api-key  # optional, enables GIF picker
 
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
@@ -302,6 +306,7 @@ WEBHOOK_SECRET=your-discord-webhook-secret
 | `NEXT_PUBLIC_SLACK_CLIENT_ID` | Vercel | Yes (if Slack connected) |
 | `SLACK_CLIENT_SECRET` | Vercel | Yes (if Slack connected) |
 | `WHATSAPP_APP_SECRET` | Vercel | Optional (webhook signature validation) |
+| `NEXT_PUBLIC_KLIPY_API_KEY` | Vercel | Optional (enables GIF picker) |
 | `SUPABASE_URL` | Railway | Yes |
 | `SUPABASE_SERVICE_KEY` | Railway | Yes |
 | `APP_WEBHOOK_URL` | Railway | Yes (required for bridging) |
@@ -319,6 +324,7 @@ WEBHOOK_SECRET=your-discord-webhook-secret
 | Slack API | $0 |
 | WhatsApp Cloud API | $0 (1,000 conversations/month free) |
 | Google Translate | $0 (500K chars free) |
+| KLIPY GIF API | $0 (free tier) |
 
 ## License
 
