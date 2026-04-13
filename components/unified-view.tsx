@@ -138,10 +138,8 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     return connections.find((c) => c.id === msg.connection_id);
   }
 
-  // Unified view shows only incoming messages from platforms
-  // Outgoing (sent from ERA37) and bridged (forwarded copies) are hidden here
-  // They're visible in per-platform conversation views
-  const visibleMessages = messages.filter((m) => m.direction === "incoming");
+  // Show incoming + outgoing, hide bridged duplicates (they're redundant in the combined view)
+  const visibleMessages = messages.filter((m) => m.direction !== "bridged");
 
   // Group broadcast messages (same content, same sender, within 2s)
   function groupMessages(msgs: Message[]): { msg: Message; platforms: Platform[] }[] {
