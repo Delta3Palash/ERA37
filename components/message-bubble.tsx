@@ -5,6 +5,30 @@ import { Languages, Check, ArrowRightLeft } from "lucide-react";
 import { format } from "date-fns";
 import type { Message } from "@/lib/types";
 
+// Discord-style username colors — deterministic based on name
+const USERNAME_COLORS = [
+  "#F47B67", // red
+  "#E8A55D", // orange
+  "#E5D05C", // yellow
+  "#5DC27A", // green
+  "#54B9C9", // teal
+  "#5A9BED", // blue
+  "#8D7AED", // purple
+  "#E278A3", // pink
+  "#E09656", // amber
+  "#58C9B9", // mint
+  "#7B8CE0", // periwinkle
+  "#C27ADB", // violet
+];
+
+function getUsernameColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return USERNAME_COLORS[Math.abs(hash) % USERNAME_COLORS.length];
+}
+
 interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
@@ -59,9 +83,13 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
           message.sender_avatar ? (
             <img src={message.sender_avatar} alt="" className="w-10 h-10 rounded-full" />
           ) : (
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
-              isOutgoing ? "bg-accent/20 text-accent" : "bg-surface border border-border text-muted"
-            }`}>
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold"
+              style={{
+                backgroundColor: isOutgoing ? "rgba(255,168,0,0.15)" : `${getUsernameColor(senderName || "?")}20`,
+                color: isOutgoing ? "var(--accent)" : getUsernameColor(senderName || "?"),
+              }}
+            >
               {(senderName || "?")[0].toUpperCase()}
             </div>
           )
@@ -76,7 +104,10 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
       <div className="flex-1 min-w-0">
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className={`text-sm font-semibold ${isOutgoing ? "text-accent" : "text-foreground"}`}>
+            <span
+              className="text-sm font-semibold"
+              style={{ color: isOutgoing ? "var(--accent)" : getUsernameColor(senderName || "Unknown") }}
+            >
               {senderName || "Unknown"}
             </span>
             {isBridged && (message.metadata as any)?.source_platform && (
