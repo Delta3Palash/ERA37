@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
-import { Send, Menu, X, ImageIcon } from "lucide-react";
+import { Send, Menu, X, ImageIcon, Reply } from "lucide-react";
 import { uploadImage } from "@/lib/upload";
 import { GifPicker } from "./gif-picker";
 import { isGifConfigured } from "@/lib/tenor";
@@ -27,7 +27,9 @@ export function ConversationView({ connection, userId, userName, preferredLangua
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { toggle } = useSidebar();
@@ -56,6 +58,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
           connectionId: connection.id,
           content: input.trim() || "",
           imageUrl: url,
+          replyToMessageId: replyingTo?.id || null,
         }),
       });
       if (res.ok) {
@@ -63,6 +66,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
         setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
       }
       setInput("");
+      setReplyingTo(null);
       clearPendingImage();
     } finally {
       setSending(false);
@@ -157,6 +161,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
         body: JSON.stringify({
           connectionId: connection.id,
           content: input.trim(),
+          replyToMessageId: replyingTo?.id || null,
         }),
       });
 
@@ -171,6 +176,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
         });
       }
       setInput("");
+      setReplyingTo(null);
     } finally {
       setSending(false);
     }
@@ -254,6 +260,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
                   preferredLanguage={preferredLanguage}
                   showHeader={showHeader || !!msg.reply_to_message_id}
                   replyToMessage={msg.reply_to_message_id ? messageMap.get(msg.reply_to_message_id) : null}
+                  onReply={(m) => { setReplyingTo(m); inputRef.current?.focus(); }}
                 />
               );
             });
@@ -279,6 +286,18 @@ export function ConversationView({ connection, userId, userName, preferredLangua
             <p className="text-accent font-medium text-sm">Drop image here</p>
           </div>
         )}
+        {replyingTo && (
+          <div className="flex items-center gap-2 px-4 pt-3 text-xs text-muted">
+            <Reply className="w-3 h-3 flex-shrink-0 scale-x-[-1] text-accent" />
+            <span className="truncate">
+              Replying to <span className="font-semibold text-foreground/80">{replyingTo.sender_name}</span>
+              {replyingTo.content && <span className="ml-1 text-muted">— {replyingTo.content.slice(0, 80)}{replyingTo.content.length > 80 ? "..." : ""}</span>}
+            </span>
+            <button onClick={() => setReplyingTo(null)} className="ml-auto p-0.5 hover:text-foreground">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
         {showGifPicker && (
           <GifPicker onSelect={handleGifSelect} onClose={() => setShowGifPicker(false)} />
         )}
@@ -300,11 +319,12 @@ export function ConversationView({ connection, userId, userName, preferredLangua
           className="flex items-center gap-2 px-4 py-3"
         >
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onPaste={handlePaste}
-            placeholder={pendingImage ? "Add a comment..." : `Message #${connection.channel_name || connection.platform}...`}
+            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : pendingImage ? "Add a comment..." : `Message #${connection.channel_name || connection.platform}...`}
             className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
             disabled={sending}
           />

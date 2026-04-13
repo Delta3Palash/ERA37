@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { connectionId, connectionIds, content, imageUrl } = await req.json();
+  const { connectionId, connectionIds, content, imageUrl, replyToMessageId } = await req.json();
 
   const serviceClient = createServiceClient();
 
@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
             direction: "outgoing",
             sent_by: user.id,
             message_type: imageUrl ? "image" : "text",
+            reply_to_message_id: replyToMessageId || null,
           })
           .select()
           .single();
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
         direction: "outgoing",
         sent_by: user.id,
         message_type: imageUrl ? "image" : "text",
+        reply_to_message_id: replyToMessageId || null,
       })
       .select()
       .single();

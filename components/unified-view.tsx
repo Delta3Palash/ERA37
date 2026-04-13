@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
-import { Send, Menu, Image, X, ImageIcon } from "lucide-react";
+import { Send, Menu, Image, X, ImageIcon, Reply } from "lucide-react";
 import { GifPicker } from "./gif-picker";
 import { isGifConfigured } from "@/lib/tenor";
 import { uploadImage } from "@/lib/upload";
@@ -29,7 +29,9 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
   const { toggle } = useSidebar();
 
@@ -53,8 +55,8 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     try {
       const url = await uploadImage(pendingImage);
       const body = sendAll
-        ? { connectionIds: connections.map((c) => c.id), content: input.trim() || "", imageUrl: url }
-        : { connectionId: replyTo!.id, content: input.trim() || "", imageUrl: url };
+        ? { connectionIds: connections.map((c) => c.id), content: input.trim() || "", imageUrl: url, replyToMessageId: replyingTo?.id || null }
+        : { connectionId: replyTo!.id, content: input.trim() || "", imageUrl: url, replyToMessageId: replyingTo?.id || null };
       const res = await fetch("/api/messages/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,6 +72,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
         });
       }
       setInput("");
+      setReplyingTo(null);
       clearPendingImage();
     } finally {
       setSending(false);
@@ -175,8 +178,8 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     setSending(true);
     try {
       const body = sendAll
-        ? { connectionIds: connections.map((c) => c.id), content: input.trim() }
-        : { connectionId: replyTo!.id, content: input.trim() };
+        ? { connectionIds: connections.map((c) => c.id), content: input.trim(), replyToMessageId: replyingTo?.id || null }
+        : { connectionId: replyTo!.id, content: input.trim(), replyToMessageId: replyingTo?.id || null };
 
       const res = await fetch("/api/messages/send", {
         method: "POST",
@@ -197,6 +200,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
         });
       }
       setInput("");
+      setReplyingTo(null);
     } finally {
       setSending(false);
     }
@@ -311,6 +315,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
                   preferredLanguage={preferredLanguage}
                   showHeader={showHeader || !!msg.reply_to_message_id}
                   replyToMessage={msg.reply_to_message_id ? messageMap.get(msg.reply_to_message_id) : null}
+                  onReply={(m) => { setReplyingTo(m); inputRef.current?.focus(); }}
                 />
               );
             });
@@ -334,6 +339,18 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
         {dragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-accent/10 border-2 border-dashed border-accent rounded-lg z-10 pointer-events-none">
             <p className="text-accent font-medium text-sm">Drop image here</p>
+          </div>
+        )}
+        {replyingTo && (
+          <div className="flex items-center gap-2 px-4 pt-3 text-xs text-muted">
+            <Reply className="w-3 h-3 flex-shrink-0 scale-x-[-1] text-accent" />
+            <span className="truncate">
+              Replying to <span className="font-semibold text-foreground/80">{replyingTo.sender_name}</span>
+              {replyingTo.content && <span className="ml-1 text-muted">— {replyingTo.content.slice(0, 80)}{replyingTo.content.length > 80 ? "..." : ""}</span>}
+            </span>
+            <button onClick={() => setReplyingTo(null)} className="ml-auto p-0.5 hover:text-foreground">
+              <X className="w-3 h-3" />
+            </button>
           </div>
         )}
         {showGifPicker && (
@@ -406,11 +423,12 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
           </div>
 
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onPaste={handlePaste}
-            placeholder={pendingImage ? "Add a comment..." : sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
+            placeholder={replyingTo ? `Reply to ${replyingTo.sender_name}...` : pendingImage ? "Add a comment..." : sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
             className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
             disabled={sending || (!replyTo && !sendAll)}
           />

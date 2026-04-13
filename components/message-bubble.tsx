@@ -35,9 +35,10 @@ interface MessageBubbleProps {
   preferredLanguage: string;
   showHeader?: boolean;
   replyToMessage?: Message | null;
+  onReply?: (message: Message) => void;
 }
 
-export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true, replyToMessage }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true, replyToMessage, onReply }: MessageBubbleProps) {
   const [translatedText, setTranslatedText] = useState(message.translated_content);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -183,9 +184,19 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
           <p className="text-xs text-red-400 mt-1">{translateError}</p>
         )}
 
-        {/* Translate button — shows on hover */}
-        {message.content && (
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+        {/* Action buttons — show on hover */}
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 flex items-center gap-3">
+          {onReply && (
+            <button
+              onClick={() => onReply(message)}
+              className="flex items-center gap-1 text-[10px] text-muted hover:text-accent transition-colors"
+              title="Reply"
+            >
+              <Reply className="w-3 h-3 scale-x-[-1]" />
+              <span>Reply</span>
+            </button>
+          )}
+          {message.content && (
             <button
               onClick={handleTranslate}
               disabled={translating}
@@ -197,8 +208,8 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
               <Languages className={`w-3 h-3 ${translating ? "animate-pulse" : ""}`} />
               <span>{showTranslation ? "Hide" : "Translate"}</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
