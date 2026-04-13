@@ -98,6 +98,7 @@ function startBot(connection) {
       content,
       imageUrl,
       messageId: message.id,
+      replyToMessageId: message.reference?.messageId || null,
     };
 
     try {

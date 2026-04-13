@@ -47,6 +47,7 @@ export interface Message {
   sent_by: string | null;
   message_type: string;
   metadata: Record<string, unknown>;
+  reply_to_message_id: string | null;
   created_at: string;
   connection?: Connection;
 }

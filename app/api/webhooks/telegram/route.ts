@@ -55,6 +55,18 @@ export async function POST(req: NextRequest) {
       imageUrl = await getTelegramFileUrl(botToken, largestPhoto.file_id);
     }
 
+    // Resolve reply reference
+    let replyToId: string | null = null;
+    if (msg.reply_to_message?.message_id) {
+      const { data: parent } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("platform_message_id", String(msg.reply_to_message.message_id))
+        .eq("connection_id", connection.id)
+        .single();
+      if (parent) replyToId = parent.id;
+    }
+
     await supabase.from("messages").insert({
       connection_id: connection.id,
       platform: "telegram",
@@ -65,6 +77,7 @@ export async function POST(req: NextRequest) {
       image_url: imageUrl,
       direction: "incoming",
       message_type: hasPhoto ? "image" : "text",
+      reply_to_message_id: replyToId,
     });
 
     // Bridge to other platforms (separate try-catch)

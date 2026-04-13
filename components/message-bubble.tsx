@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Languages, Check, ArrowRightLeft } from "lucide-react";
+import { Languages, Check, ArrowRightLeft, Reply } from "lucide-react";
 import { format } from "date-fns";
 import type { Message } from "@/lib/types";
 
@@ -34,12 +34,14 @@ interface MessageBubbleProps {
   currentUserId: string;
   preferredLanguage: string;
   showHeader?: boolean;
+  replyToMessage?: Message | null;
 }
 
-export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true, replyToMessage }: MessageBubbleProps) {
   const [translatedText, setTranslatedText] = useState(message.translated_content);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
 
   const isOutgoing = message.direction === "outgoing" && message.sent_by === currentUserId;
   const isBridged = message.direction === "bridged";
@@ -48,10 +50,12 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
   async function handleTranslate() {
     if (translatedText) {
       setShowTranslation(!showTranslation);
+      setTranslateError(null);
       return;
     }
 
     setTranslating(true);
+    setTranslateError(null);
     try {
       const res = await fetch("/api/translate", {
         method: "POST",
@@ -67,7 +71,12 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
         const data = await res.json();
         setTranslatedText(data.translatedText);
         setShowTranslation(true);
+      } else {
+        const data = await res.json().catch(() => ({ error: "Translation failed" }));
+        setTranslateError(data.error || "Translation failed");
       }
+    } catch {
+      setTranslateError("Network error — could not translate");
     } finally {
       setTranslating(false);
     }
@@ -122,6 +131,22 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
           </div>
         )}
 
+        {/* Reply preview */}
+        {replyToMessage && (
+          <div className="mt-1 mb-0.5 flex items-center gap-1.5 text-xs text-muted cursor-pointer hover:text-foreground/70 transition-colors">
+            <Reply className="w-3 h-3 flex-shrink-0 scale-x-[-1]" />
+            <span
+              className="font-semibold"
+              style={{ color: getUsernameColor(replyToMessage.sender_name || "Unknown") }}
+            >
+              {replyToMessage.sender_name || "Unknown"}
+            </span>
+            <span className="truncate max-w-[300px] text-muted">
+              {replyToMessage.content || (replyToMessage.image_url ? "Image" : "Message")}
+            </span>
+          </div>
+        )}
+
         {/* Image */}
         {message.image_url && (
           <div className="mt-1">
@@ -151,6 +176,11 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
               {translatedText}
             </p>
           </div>
+        )}
+
+        {/* Translation error */}
+        {translateError && (
+          <p className="text-xs text-red-400 mt-1">{translateError}</p>
         )}
 
         {/* Translate button — shows on hover */}

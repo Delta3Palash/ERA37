@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
-import { Send, Menu, Image } from "lucide-react";
+import { Send, Menu, Image, X, ImageIcon } from "lucide-react";
 import { GifPicker } from "./gif-picker";
 import { isGifConfigured } from "@/lib/tenor";
+import { uploadImage } from "@/lib/upload";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Message, Platform } from "@/lib/types";
@@ -25,11 +26,68 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const [sendAll, setSendAll] = useState(true);
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
   const { toggle } = useSidebar();
 
   const connectionIds = useMemo(() => connections.map((c) => c.id).join(","), [connections]);
+
+  function handleImageFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+    setPendingImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  }
+
+  function clearPendingImage() {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setPendingImage(null);
+    setImagePreview(null);
+  }
+
+  async function sendPendingImage() {
+    if (!pendingImage || (!replyTo && !sendAll)) return;
+    setSending(true);
+    try {
+      const url = await uploadImage(pendingImage);
+      const body = sendAll
+        ? { connectionIds: connections.map((c) => c.id), content: input.trim() || "", imageUrl: url }
+        : { connectionId: replyTo!.id, content: input.trim() || "", imageUrl: url };
+      const res = await fetch("/api/messages/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newMessages = sendAll ? data.messages : [data];
+        setMessages((prev) => {
+          const ids = new Set(prev.map((m) => m.id));
+          const unique = newMessages.filter((m: Message) => !ids.has(m.id));
+          return [...prev, ...unique];
+        });
+      }
+      setInput("");
+      clearPendingImage();
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleImageFile(file);
+        return;
+      }
+    }
+  }, []);
 
   // Realtime subscriptions
   useEffect(() => {
@@ -235,35 +293,67 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
             No messages yet across any platform.
           </div>
         ) : (
-          visibleMessages.map((msg, i) => {
-            const prev = visibleMessages[i - 1];
-            const showHeader = !prev ||
-              prev.sender_name !== msg.sender_name ||
-              prev.direction !== msg.direction ||
-              (msg.direction === "outgoing" && prev.sent_by !== msg.sent_by) ||
-              new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
+          (() => {
+            const messageMap = new Map(visibleMessages.map((m) => [m.id, m]));
+            return visibleMessages.map((msg, i) => {
+              const prev = visibleMessages[i - 1];
+              const showHeader = !prev ||
+                prev.sender_name !== msg.sender_name ||
+                prev.direction !== msg.direction ||
+                (msg.direction === "outgoing" && prev.sent_by !== msg.sent_by) ||
+                new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000;
 
-            return (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                currentUserId={userId}
-                preferredLanguage={preferredLanguage}
-                showHeader={showHeader}
-              />
-            );
-          })
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  currentUserId={userId}
+                  preferredLanguage={preferredLanguage}
+                  showHeader={showHeader || !!msg.reply_to_message_id}
+                  replyToMessage={msg.reply_to_message_id ? messageMap.get(msg.reply_to_message_id) : null}
+                />
+              );
+            });
+          })()
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input with platform selector */}
-      <div className="relative border-t border-border bg-surface">
+      <div
+        className={`relative border-t bg-surface transition-colors ${dragging ? "border-accent bg-accent/5" : "border-border"}`}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          const file = e.dataTransfer.files[0];
+          if (file) handleImageFile(file);
+        }}
+      >
+        {dragging && (
+          <div className="absolute inset-0 flex items-center justify-center bg-accent/10 border-2 border-dashed border-accent rounded-lg z-10 pointer-events-none">
+            <p className="text-accent font-medium text-sm">Drop image here</p>
+          </div>
+        )}
         {showGifPicker && (
           <GifPicker onSelect={handleGifSelect} onClose={() => setShowGifPicker(false)} />
         )}
+        {imagePreview && (
+          <div className="px-4 pt-3 flex items-end gap-2">
+            <div className="relative">
+              <img src={imagePreview} alt="Preview" className="max-h-32 rounded-lg border border-border" />
+              <button
+                onClick={clearPendingImage}
+                className="absolute -top-2 -right-2 p-0.5 rounded-full bg-red-500 text-white hover:bg-red-600"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        )}
         <form
-          onSubmit={handleSend}
+          onSubmit={pendingImage ? (e) => { e.preventDefault(); sendPendingImage(); } : handleSend}
           className="flex items-center gap-2 px-4 py-3"
         >
           {/* Platform selector — defaults to All, click to pick individual */}
@@ -319,11 +409,12 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
+            onPaste={handlePaste}
+            placeholder={pendingImage ? "Add a comment..." : sendAll ? "Message all channels..." : replyTo ? `Message ${replyTo.channel_name}...` : "Select a platform..."}
             className="flex-1 px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm focus:outline-none focus:border-accent"
             disabled={sending || (!replyTo && !sendAll)}
           />
-          {isGifConfigured() && (
+          {isGifConfigured() && !pendingImage && (
             <button
               type="button"
               onClick={() => setShowGifPicker(!showGifPicker)}
@@ -340,10 +431,10 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
           )}
           <button
             type="submit"
-            disabled={!input.trim() || sending || (!replyTo && !sendAll)}
+            disabled={(!input.trim() && !pendingImage) || sending || (!replyTo && !sendAll)}
             className="p-2.5 rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors disabled:opacity-30"
           >
-            <Send className="w-4 h-4" />
+            {pendingImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
       </div>

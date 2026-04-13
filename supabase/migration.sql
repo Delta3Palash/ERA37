@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS messages (
   sent_by UUID REFERENCES profiles(id),
   message_type TEXT DEFAULT 'text',
   metadata JSONB DEFAULT '{}',
+  reply_to_message_id UUID REFERENCES messages(id),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -105,3 +106,15 @@ CREATE POLICY "Users can update own message translations" ON messages
 
 -- Enable Realtime on messages
 ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+
+-- Storage bucket for user-uploaded images
+INSERT INTO storage.buckets (id, name, public) VALUES ('chat-images', 'chat-images', true)
+  ON CONFLICT (id) DO NOTHING;
+
+-- Authenticated users can upload images
+CREATE POLICY "Authenticated users can upload images" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'chat-images' AND auth.uid() IS NOT NULL);
+
+-- Anyone can view uploaded images (public bucket)
+CREATE POLICY "Public read access for chat images" ON storage.objects
+  FOR SELECT USING (bucket_id = 'chat-images');

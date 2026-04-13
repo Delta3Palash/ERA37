@@ -80,6 +80,18 @@ async function handleSlackMessage(teamId: string, event: any) {
     const hasContent = !!event.text || !!imageUrl;
     if (!hasContent) return;
 
+    // Resolve reply reference (thread_ts different from ts means it's a reply)
+    let replyToId: string | null = null;
+    if (event.thread_ts && event.thread_ts !== event.ts) {
+      const { data: parent } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("platform_message_id", event.thread_ts)
+        .eq("connection_id", connection.id)
+        .single();
+      if (parent) replyToId = parent.id;
+    }
+
     await supabase.from("messages").insert({
       connection_id: connection.id,
       platform: "slack",
@@ -91,6 +103,7 @@ async function handleSlackMessage(teamId: string, event: any) {
       image_url: imageUrl,
       direction: "incoming",
       message_type: imageUrl ? "image" : "text",
+      reply_to_message_id: replyToId,
     });
 
     // Bridge to other platforms (separate try-catch)

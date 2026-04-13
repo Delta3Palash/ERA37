@@ -32,15 +32,11 @@ async function translateWithPapago(
   const res = await fetch(PAPAGO_API, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
       "X-NCP-APIGW-API-KEY-ID": clientId,
       "X-NCP-APIGW-API-KEY": clientSecret,
     },
-    body: JSON.stringify({
-      source: "auto",
-      target,
-      text,
-    }),
+    body: new URLSearchParams({ source: "auto", target, text }),
   });
 
   if (!res.ok) {

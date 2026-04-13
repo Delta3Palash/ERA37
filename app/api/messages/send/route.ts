@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const platformContent = content
     ? `[${senderName}] ${content}`
     : imageUrl
-      ? `[${senderName}] ${imageUrl}`
+      ? `[${senderName}]\n${imageUrl}`
       : `[${senderName}]`;
 
   // Batch send: connectionIds array

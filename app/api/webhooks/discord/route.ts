@@ -21,11 +21,24 @@ export async function POST(req: NextRequest) {
     content,
     imageUrl,
     messageId,
+    replyToMessageId,
     skipInsert,
   } = await req.json();
 
   if (!connectionId || (!content && !imageUrl)) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  // Resolve reply reference to ERA37 message ID
+  let replyToId: string | null = null;
+  if (replyToMessageId) {
+    const { data: parent } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("platform_message_id", replyToMessageId)
+      .eq("connection_id", connectionId)
+      .single();
+    if (parent) replyToId = parent.id;
   }
 
   // Insert message first — skip if already written directly by the worker
@@ -42,6 +55,7 @@ export async function POST(req: NextRequest) {
         image_url: imageUrl || null,
         direction: "incoming",
         message_type: imageUrl ? "image" : "text",
+        reply_to_message_id: replyToId,
       });
     } catch (err: any) {
       console.error("Discord message insert error:", err);

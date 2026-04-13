@@ -113,6 +113,18 @@ async function handleIncomingMessage(
 
     if (!content && !imageUrl) return;
 
+    // Resolve reply reference
+    let replyToId: string | null = null;
+    if (msg.context?.id) {
+      const { data: parent } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("platform_message_id", msg.context.id)
+        .eq("connection_id", connection.id)
+        .single();
+      if (parent) replyToId = parent.id;
+    }
+
     await supabase.from("messages").insert({
       connection_id: connection.id,
       platform: "whatsapp",
@@ -123,6 +135,7 @@ async function handleIncomingMessage(
       image_url: imageUrl,
       direction: "incoming",
       message_type: messageType,
+      reply_to_message_id: replyToId,
     });
 
     // Bridge to other platforms (separate try-catch)
