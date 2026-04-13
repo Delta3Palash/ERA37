@@ -35,7 +35,9 @@ export function UserPreferences({ profile, userId }: UserPreferencesProps) {
           className="w-full max-w-xs px-3 py-2 rounded-lg bg-background border border-border text-foreground"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
-            <option key={lang.code} value={lang.code}>{lang.name}</option>
+            <option key={lang.code} value={lang.code}>
+              {lang.name}{(lang as any).engine ? ` (${(lang as any).engine})` : ""}
+            </option>
           ))}
         </select>
       </section>
