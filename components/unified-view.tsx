@@ -82,15 +82,13 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     const connIds = connections.map((c) => c.id);
     if (connIds.length === 0) return;
 
-    // Fetch newest 200 non-bridged messages (bridged are hidden in unified view)
     const { data } = await supabase
       .from("messages")
       .select("*")
       .in("connection_id", connIds)
       .neq("direction", "bridged")
-      .order("created_at", { ascending: false })
-      .limit(200);
-    if (data) setMessages(data.reverse());
+      .order("created_at", { ascending: true });
+    if (data) setMessages(data);
   }
 
   async function handleSend(e: React.FormEvent) {

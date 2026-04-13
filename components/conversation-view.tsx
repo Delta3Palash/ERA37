@@ -71,8 +71,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
       .from("messages")
       .select("*")
       .eq("connection_id", connection.id)
-      .order("created_at", { ascending: true })
-      .limit(200);
+      .order("created_at", { ascending: true });
     if (data) setMessages(data);
   }
 
