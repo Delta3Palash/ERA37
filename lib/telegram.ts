@@ -58,5 +58,6 @@ export interface TelegramUpdate {
     text?: string;
     caption?: string;
     photo?: Array<{ file_id: string; file_unique_id: string; width: number; height: number }>;
+    reply_to_message?: { message_id: number };
   };
 }
