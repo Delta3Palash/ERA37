@@ -82,6 +82,12 @@ ALTER TABLE messages ADD CONSTRAINT messages_direction_check
 - Auto-translate was unreliable due to Realtime callback closure issues
 - Could revisit with a different approach (server-side in webhooks, or Supabase Edge Functions)
 
+### @Mentions System
+- Autocomplete dropdown when typing `@` in ERA37 (list workspace members + platform users)
+- Map ERA37 users to their platform user IDs
+- Convert `@name` to platform-specific mention format before sending (`<@USER_ID>` for Discord, `<@U123>` for Slack, etc.)
+- In-app notification for mentioned users
+
 ### Potential Improvements
 - Message search/filtering
 - Read receipts / typing indicators
@@ -89,6 +95,7 @@ ALTER TABLE messages ADD CONSTRAINT messages_direction_check
 - User roles beyond admin/non-admin
 - Multi-workspace support
 - Message reactions
+- Message pagination (load more) if performance degrades
 
 ## Key Files Changed This Session:
 - `app/auth/callback/route.ts` — server-side invite code enforcement
