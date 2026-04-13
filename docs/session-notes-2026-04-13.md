@@ -106,18 +106,24 @@
 - Convert to platform-specific format before sending
 - In-app notification for mentioned users
 
-### 3. UI/UX Improvements
+### 3. Image/Screenshot Drop in Chat (high priority)
+- Drag-and-drop or paste screenshots/images into the chat input
+- Upload to Supabase Storage (or similar), get public URL
+- Send as message with `image_url` field (same as GIF flow)
+- Support clipboard paste (Ctrl+V screenshot) and file drag-and-drop
+
+### 4. UI/UX Improvements
 - Message reactions (emoji react bar)
 - Link previews (auto-detect URLs, show title/image)
 - Message search/filtering
 - Unread message indicator / scroll-to-new
 - Better mobile touch interactions
 
-### 4. Auto-Translation (revisit)
+### 5. Auto-Translation (revisit)
 - Server-side approach (in webhooks) instead of client-side
 - Or Supabase Edge Functions for async translation
 
-### 5. Future Features (lower priority)
+### 6. Future Features (lower priority)
 - File/document sharing (not just images)
 - Read receipts / typing indicators
 - User roles beyond admin/non-admin
