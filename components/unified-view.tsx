@@ -45,6 +45,8 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
           },
           (payload: any) => {
             const newMsg = payload.new as Message;
+            // Skip bridged messages in unified view
+            if (newMsg.direction === "bridged") return;
             setMessages((prev) => {
               if (prev.some((m) => m.id === newMsg.id)) return prev;
               return [...prev, newMsg].sort(
@@ -77,16 +79,18 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   }, [messages]);
 
   async function loadMessages() {
-    const connectionIds = connections.map((c) => c.id);
-    if (connectionIds.length === 0) return;
+    const connIds = connections.map((c) => c.id);
+    if (connIds.length === 0) return;
 
+    // Fetch newest 200 non-bridged messages (bridged are hidden in unified view)
     const { data } = await supabase
       .from("messages")
       .select("*")
-      .in("connection_id", connectionIds)
-      .order("created_at", { ascending: true })
+      .in("connection_id", connIds)
+      .neq("direction", "bridged")
+      .order("created_at", { ascending: false })
       .limit(200);
-    if (data) setMessages(data);
+    if (data) setMessages(data.reverse());
   }
 
   async function handleSend(e: React.FormEvent) {
