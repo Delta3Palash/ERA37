@@ -170,29 +170,22 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
     return connections.find((c) => c.id === msg.connection_id);
   }
 
-  // Show incoming + outgoing, hide bridged duplicates (they're redundant in the combined view)
-  const visibleMessages = messages.filter((m) => m.direction !== "bridged");
-
-  // Group broadcast messages (same content, same sender, within 2s)
-  function groupMessages(msgs: Message[]): { msg: Message; platforms: Platform[] }[] {
-    const grouped: { msg: Message; platforms: Platform[] }[] = [];
-    for (const msg of msgs) {
-      const prev = grouped[grouped.length - 1];
-      if (
-        prev &&
-        prev.msg.content === msg.content &&
-        prev.msg.sent_by === msg.sent_by &&
-        prev.msg.direction === "outgoing" &&
-        msg.direction === "outgoing" &&
-        Math.abs(new Date(msg.created_at).getTime() - new Date(prev.msg.created_at).getTime()) < 2000
-      ) {
-        prev.platforms.push(msg.platform as Platform);
-      } else {
-        grouped.push({ msg, platforms: [msg.platform as Platform] });
-      }
+  // Show incoming + outgoing, hide bridged duplicates and "Send to All" duplicates
+  const visibleMessages = messages.filter((m) => m.direction !== "bridged").filter((msg, i, arr) => {
+    // Deduplicate "Send to All" outgoing: keep only the first of each batch
+    if (msg.direction !== "outgoing") return true;
+    const prev = arr[i - 1];
+    if (
+      prev &&
+      prev.direction === "outgoing" &&
+      prev.content === msg.content &&
+      prev.sent_by === msg.sent_by &&
+      Math.abs(new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime()) < 2000
+    ) {
+      return false; // duplicate from batch send
     }
-    return grouped;
-  }
+    return true;
+  });
 
   return (
     <div className="flex flex-col h-full">
