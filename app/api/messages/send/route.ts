@@ -44,16 +44,10 @@ export async function POST(req: NextRequest) {
   // Look up parent message's platform_message_id for native replies
   let replyPlatformIds: Map<string, string> | null = null;
   if (replyToMessageId) {
-    const { data: parentMessages } = await serviceClient
-      .from("messages")
-      .select("connection_id, platform_message_id")
-      .eq("reply_to_message_id", replyToMessageId)
-      .is("platform_message_id", "not.null");
-
-    // Also get the original message itself (it might be the one with the platform IDs)
+    // Get the parent message first
     const { data: original } = await serviceClient
       .from("messages")
-      .select("connection_id, platform_message_id")
+      .select("id, connection_id, platform_message_id, content, sent_by, created_at")
       .eq("id", replyToMessageId)
       .single();
 
@@ -61,10 +55,44 @@ export async function POST(req: NextRequest) {
     if (original?.platform_message_id) {
       replyPlatformIds.set(original.connection_id, original.platform_message_id);
     }
-    if (parentMessages) {
-      for (const pm of parentMessages) {
-        if (pm.platform_message_id) {
-          replyPlatformIds.set(pm.connection_id, pm.platform_message_id);
+
+    // For "Send to All" outgoing messages, find sibling messages on other connections
+    // (same sender, same content, within 5s — these are the same logical message)
+    if (original?.sent_by && original?.content) {
+      const { data: siblings } = await serviceClient
+        .from("messages")
+        .select("connection_id, platform_message_id")
+        .eq("sent_by", original.sent_by)
+        .eq("content", original.content)
+        .eq("direction", "outgoing")
+        .not("platform_message_id", "is", null)
+        .gte("created_at", new Date(new Date(original.created_at).getTime() - 5000).toISOString())
+        .lte("created_at", new Date(new Date(original.created_at).getTime() + 5000).toISOString());
+
+      if (siblings) {
+        for (const s of siblings) {
+          if (s.platform_message_id) {
+            replyPlatformIds.set(s.connection_id, s.platform_message_id);
+          }
+        }
+      }
+    }
+
+    // Also check for bridged copies of incoming messages on other connections
+    if (original && !original.sent_by) {
+      const { data: bridged } = await serviceClient
+        .from("messages")
+        .select("connection_id, platform_message_id")
+        .eq("direction", "bridged")
+        .not("platform_message_id", "is", null)
+        .gte("created_at", new Date(new Date(original.created_at).getTime() - 5000).toISOString())
+        .lte("created_at", new Date(new Date(original.created_at).getTime() + 5000).toISOString());
+
+      if (bridged) {
+        for (const b of bridged) {
+          if (b.platform_message_id) {
+            replyPlatformIds.set(b.connection_id, b.platform_message_id);
+          }
         }
       }
     }
