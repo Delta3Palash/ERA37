@@ -21,8 +21,9 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [replyTo, setReplyTo] = useState<Connection | null>(connections[0] || null);
-  const [sendAll, setSendAll] = useState(false);
+  const [replyTo, setReplyTo] = useState<Connection | null>(null);
+  const [sendAll, setSendAll] = useState(true);
+  const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -250,37 +251,53 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
           onSubmit={handleSend}
           className="flex items-center gap-2 px-4 py-3"
         >
-          {/* Platform selector */}
-          <div className="flex gap-1">
-            {connections.length > 1 && (
+          {/* Platform selector — defaults to All, click to pick individual */}
+          <div className="relative flex gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (!sendAll) {
+                  setSendAll(true);
+                  setReplyTo(null);
+                  setShowPlatformPicker(false);
+                } else {
+                  setShowPlatformPicker(!showPlatformPicker);
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                sendAll
+                  ? "bg-accent/20 ring-1 ring-accent text-accent"
+                  : "hover:bg-surface-hover text-muted"
+              }`}
+              title={sendAll ? "Click to pick a single platform" : "Send to all channels"}
+            >
+              All
+            </button>
+            {!sendAll && replyTo && (
               <button
                 type="button"
-                onClick={() => { setSendAll(true); setReplyTo(null); }}
-                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  sendAll
-                    ? "bg-accent/20 ring-1 ring-accent text-accent"
-                    : "hover:bg-surface-hover opacity-50 text-muted"
-                }`}
-                title="Send to all channels"
+                onClick={() => setShowPlatformPicker(!showPlatformPicker)}
+                className={`p-1.5 rounded-lg bg-accent/20 ring-1 ring-accent platform-${replyTo.platform}`}
+                title={`Sending to ${replyTo.channel_name} — click to change`}
               >
-                All
+                {getPlatformIcon(replyTo.platform)}
               </button>
             )}
-            {connections.map((conn) => (
-              <button
-                key={conn.id}
-                type="button"
-                onClick={() => { setReplyTo(conn); setSendAll(false); }}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  sendAll || replyTo?.id === conn.id
-                    ? "bg-accent/20 ring-1 ring-accent"
-                    : "hover:bg-surface-hover opacity-50"
-                } platform-${conn.platform}`}
-                title={`Send to ${conn.channel_name}`}
-              >
-                {getPlatformIcon(conn.platform)}
-              </button>
-            ))}
+            {showPlatformPicker && (
+              <div className="absolute bottom-full left-0 mb-2 flex gap-1 bg-surface border border-border rounded-lg p-1.5 shadow-lg z-50">
+                {connections.map((conn) => (
+                  <button
+                    key={conn.id}
+                    type="button"
+                    onClick={() => { setReplyTo(conn); setSendAll(false); setShowPlatformPicker(false); }}
+                    className={`p-1.5 rounded-lg transition-colors hover:bg-surface-hover platform-${conn.platform}`}
+                    title={conn.channel_name || conn.platform}
+                  >
+                    {getPlatformIcon(conn.platform)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <input
