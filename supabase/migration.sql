@@ -118,3 +118,112 @@ CREATE POLICY "Authenticated users can upload images" ON storage.objects
 -- Anyone can view uploaded images (public bucket)
 CREATE POLICY "Public read access for chat images" ON storage.objects
   FOR SELECT USING (bucket_id = 'chat-images');
+
+-- =============================================================
+-- Phase 1: Custom Roles + Channel Groups
+-- =============================================================
+-- Safe to re-run. All additions are idempotent (IF NOT EXISTS /
+-- ON CONFLICT). is_admin on profiles is untouched — roles are
+-- orthogonal to the superadmin flag.
+
+-- Custom roles (R5, R4, Rally Leader, Scout, Diplomat, ...)
+CREATE TABLE IF NOT EXISTS roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL DEFAULT '#737373',
+  priority INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Multi-role per user
+CREATE TABLE IF NOT EXISTS profile_roles (
+  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  role_id    UUID NOT NULL REFERENCES roles(id)    ON DELETE CASCADE,
+  assigned_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (profile_id, role_id)
+);
+
+-- Channel groups ("General", "R4 Officers", "R5 Leadership", ...)
+CREATE TABLE IF NOT EXISTS channel_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  min_role_priority INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Many-to-many: a connection can belong to multiple groups
+CREATE TABLE IF NOT EXISTS channel_group_connections (
+  group_id      UUID NOT NULL REFERENCES channel_groups(id) ON DELETE CASCADE,
+  connection_id UUID NOT NULL REFERENCES connections(id)    ON DELETE CASCADE,
+  PRIMARY KEY (group_id, connection_id)
+);
+
+-- Bootstrap: default "Member" role (priority 0)
+INSERT INTO roles (name, color, priority)
+  VALUES ('Member', '#737373', 0)
+  ON CONFLICT (name) DO NOTHING;
+
+-- Bootstrap: default "General" group (min priority 0)
+INSERT INTO channel_groups (name, min_role_priority, sort_order)
+  SELECT 'General', 0, 0
+  WHERE NOT EXISTS (SELECT 1 FROM channel_groups WHERE name = 'General');
+
+-- Backfill: attach every existing connection to the General group
+INSERT INTO channel_group_connections (group_id, connection_id)
+  SELECT (SELECT id FROM channel_groups WHERE name = 'General' LIMIT 1), c.id
+  FROM connections c
+  ON CONFLICT DO NOTHING;
+
+-- Backfill: give every existing user the Member role
+INSERT INTO profile_roles (profile_id, role_id)
+  SELECT p.id, (SELECT id FROM roles WHERE name = 'Member' LIMIT 1)
+  FROM profiles p
+  ON CONFLICT DO NOTHING;
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_profile_roles_profile ON profile_roles(profile_id);
+CREATE INDEX IF NOT EXISTS idx_cgc_group ON channel_group_connections(group_id);
+CREATE INDEX IF NOT EXISTS idx_cgc_connection ON channel_group_connections(connection_id);
+
+-- RLS
+ALTER TABLE roles                     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profile_roles             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE channel_groups            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE channel_group_connections ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Auth read roles" ON roles;
+CREATE POLICY "Auth read roles" ON roles
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Admins manage roles" ON roles;
+CREATE POLICY "Admins manage roles" ON roles
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );
+
+DROP POLICY IF EXISTS "Auth read profile_roles" ON profile_roles;
+CREATE POLICY "Auth read profile_roles" ON profile_roles
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Admins manage profile_roles" ON profile_roles;
+CREATE POLICY "Admins manage profile_roles" ON profile_roles
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );
+
+DROP POLICY IF EXISTS "Auth read channel_groups" ON channel_groups;
+CREATE POLICY "Auth read channel_groups" ON channel_groups
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Admins manage channel_groups" ON channel_groups;
+CREATE POLICY "Admins manage channel_groups" ON channel_groups
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );
+
+DROP POLICY IF EXISTS "Auth read channel_group_connections" ON channel_group_connections;
+CREATE POLICY "Auth read channel_group_connections" ON channel_group_connections
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS "Admins manage channel_group_connections" ON channel_group_connections;
+CREATE POLICY "Admins manage channel_group_connections" ON channel_group_connections
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );

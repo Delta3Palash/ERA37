@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sendMessage } from "@/lib/platforms";
 import { NextRequest, NextResponse } from "next/server";
+import { effectivePriority, type Role } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -10,6 +11,59 @@ export async function POST(req: NextRequest) {
   const { connectionId, connectionIds, content, imageUrl, replyToMessageId } = await req.json();
 
   const serviceClient = createServiceClient();
+
+  // ------------------------------------------------------------------
+  // Access check: every target connection must belong to a channel_group
+  // whose min_role_priority the sender satisfies. Uses service client so
+  // we can read channel_group_connections even if RLS gets tightened later.
+  // ------------------------------------------------------------------
+  const targetIds: string[] = Array.isArray(connectionIds)
+    ? connectionIds
+    : connectionId
+    ? [connectionId]
+    : [];
+
+  if (targetIds.length === 0) {
+    return NextResponse.json({ error: "connectionId required" }, { status: 400 });
+  }
+
+  const { data: senderAssignments } = await serviceClient
+    .from("profile_roles")
+    .select("roles(*)")
+    .eq("profile_id", user.id);
+  const senderRoles: Role[] = (senderAssignments || [])
+    .map((r: any) => r.roles as Role)
+    .filter(Boolean);
+  const userPriority = effectivePriority(senderRoles);
+
+  const { data: groupLinks } = await serviceClient
+    .from("channel_group_connections")
+    .select("connection_id, channel_groups(min_role_priority)")
+    .in("connection_id", targetIds);
+
+  // For each target, compute the lowest min_role_priority across its groups.
+  // If a target has no group rows at all, we treat it as inaccessible (defense in depth).
+  const minByConn = new Map<string, number>();
+  for (const link of (groupLinks || []) as any[]) {
+    const min = link.channel_groups?.min_role_priority ?? Number.POSITIVE_INFINITY;
+    const prev = minByConn.get(link.connection_id);
+    if (prev === undefined || min < prev) minByConn.set(link.connection_id, min);
+  }
+  for (const id of targetIds) {
+    if (!minByConn.has(id)) {
+      return NextResponse.json(
+        { error: "Connection is not in any channel group" },
+        { status: 403 }
+      );
+    }
+    const required = minByConn.get(id) as number;
+    if (userPriority < required) {
+      return NextResponse.json(
+        { error: "You don't have access to this channel" },
+        { status: 403 }
+      );
+    }
+  }
 
   // Get or create user profile for sender name
   let { data: profile } = await supabase
@@ -35,9 +89,22 @@ export async function POST(req: NextRequest) {
   }
 
   const senderName = profile?.display_name || "User";
+  const hasCaption = typeof content === "string" && content.trim().length > 0;
   let platformContent = `[${senderName}]`;
-  if (content) platformContent += ` ${content}`;
-  if (imageUrl) platformContent += `\n${imageUrl}`;
+  if (hasCaption) platformContent += ` ${content}`;
+  if (imageUrl) {
+    if (hasCaption) {
+      // Caption + image: keep URL on a new line (preserves commit 96570d1 — we need
+      // the URL in the text for platforms that don't auto-embed).
+      platformContent += `\n${imageUrl}`;
+    } else {
+      // Image only (e.g. Klipy GIF with no caption): use a markdown hidden link
+      // with a zero-width space as the visible text. Discord still auto-embeds
+      // the URL but the link text is invisible, so the raw URL doesn't show up
+      // above the embed.
+      platformContent += ` [\u200B](${imageUrl})`;
+    }
+  }
 
   // Look up parent message's platform_message_id for native replies
   let replyPlatformIds: Map<string, string> | null = null;

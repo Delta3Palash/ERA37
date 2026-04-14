@@ -10,16 +10,17 @@ import { isGifConfigured } from "@/lib/tenor";
 import { useSidebar } from "./chat-layout-wrapper";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
-import type { Connection, Message, Platform } from "@/lib/types";
+import type { Connection, Message, Platform, Role } from "@/lib/types";
 
 interface ConversationViewProps {
   connection: Connection;
+  roleMap?: Record<string, Role[]>;
   userId: string;
   userName: string;
   preferredLanguage: string;
 }
 
-export function ConversationView({ connection, userId, userName, preferredLanguage }: ConversationViewProps) {
+export function ConversationView({ connection, roleMap, userId, userName, preferredLanguage }: ConversationViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -261,6 +262,7 @@ export function ConversationView({ connection, userId, userName, preferredLangua
                   showHeader={showHeader || !!msg.reply_to_message_id}
                   replyToMessage={msg.reply_to_message_id ? messageMap.get(msg.reply_to_message_id) : null}
                   onReply={(m) => { setReplyingTo(m); inputRef.current?.focus(); }}
+                  roleMap={roleMap}
                 />
               );
             });

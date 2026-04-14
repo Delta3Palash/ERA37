@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ConversationView } from "@/components/conversation-view";
+import { getUserAccess } from "@/lib/access";
 
 export default async function ChatConversationPage({
   params,
@@ -11,15 +12,15 @@ export default async function ChatConversationPage({
 }) {
   const { chatId: connectionId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
 
-  const { data: connection } = await supabase
-    .from("connections")
-    .select("*")
-    .eq("id", connectionId)
-    .single();
+  const access = await getUserAccess(supabase, user.id);
 
+  // Only allow access if the connection is inside an accessible group
+  const connection = access.accessibleConnections.find((c) => c.id === connectionId);
   if (!connection) redirect("/chat");
 
   const { data: profile } = await supabase
@@ -31,6 +32,7 @@ export default async function ChatConversationPage({
   return (
     <ConversationView
       connection={connection}
+      roleMap={access.roleMap}
       userId={user.id}
       userName={profile?.display_name || "User"}
       preferredLanguage={profile?.preferred_language || "en"}
