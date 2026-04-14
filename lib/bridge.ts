@@ -26,15 +26,47 @@ export async function bridgeMessage(
 
   if (!workspace?.bridge_enabled) return;
 
-  // Get all OTHER connections
+  // Find which channel_groups the source connection belongs to
+  const { data: sourceLinks } = await supabase
+    .from("channel_group_connections")
+    .select("group_id")
+    .eq("connection_id", sourceConnection.id);
+
+  const groupIds = (sourceLinks || []).map((l: { group_id: string }) => l.group_id);
+  if (groupIds.length === 0) {
+    // Defensive: post-migration every connection is in General. If we hit this,
+    // a connection was added out-of-band — skip bridging rather than leak.
+    console.warn(
+      `Bridge: source connection ${sourceConnection.id} has no channel_group — skipping`
+    );
+    return;
+  }
+
+  // All connections that share a group with the source (excluding source)
+  const { data: siblingLinks } = await supabase
+    .from("channel_group_connections")
+    .select("connection_id")
+    .in("group_id", groupIds);
+
+  const targetIds = Array.from(
+    new Set(
+      (siblingLinks || [])
+        .map((l: { connection_id: string }) => l.connection_id)
+        .filter((id: string) => id !== sourceConnection.id)
+    )
+  );
+
+  if (targetIds.length === 0) return;
+
   const { data: allConnections } = await supabase
     .from("connections")
     .select("*")
-    .neq("id", sourceConnection.id);
+    .in("id", targetIds);
 
   if (!allConnections?.length) return;
 
-  const platformName = sourceConnection.platform.charAt(0).toUpperCase() + sourceConnection.platform.slice(1);
+  const platformName =
+    sourceConnection.platform.charAt(0).toUpperCase() + sourceConnection.platform.slice(1);
   const bridgedContent = `[${platformName}] ${senderName}: ${content || ""}`.trim();
 
   await Promise.allSettled(
