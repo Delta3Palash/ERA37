@@ -16,11 +16,23 @@ interface AdminUserRow {
 interface Props {
   users: AdminUserRow[];
   roles: Role[];
+  isAdmin: boolean;
+  userPriority: number;
 }
 
-export function UsersManager({ users, roles }: Props) {
+export function UsersManager({ users, roles, isAdmin, userPriority }: Props) {
   const rolesById = new Map(roles.map((r) => [r.id, r]));
   const [query, setQuery] = useState("");
+
+  // Delegated managers can only assign roles strictly below their own priority.
+  const assignableRoles = isAdmin ? roles : roles.filter((r) => r.priority < userPriority);
+
+  function canManageRole(roleId: string): boolean {
+    if (isAdmin) return true;
+    const role = rolesById.get(roleId);
+    if (!role) return false;
+    return role.priority < userPriority;
+  }
 
   const filtered = users.filter((u) =>
     (u.display_name || "").toLowerCase().includes(query.toLowerCase())
@@ -31,7 +43,11 @@ export function UsersManager({ users, roles }: Props) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold">Users</h2>
-          <p className="text-sm text-muted">Assign one or more roles to each member.</p>
+          <p className="text-sm text-muted">
+            {isAdmin
+              ? "Assign one or more roles to each member."
+              : `You can assign roles below priority ${userPriority}.`}
+          </p>
         </div>
         <input
           type="text"
@@ -47,7 +63,13 @@ export function UsersManager({ users, roles }: Props) {
           <p className="text-sm text-muted text-center py-6">No users.</p>
         ) : (
           filtered.map((user) => (
-            <UserRow key={user.id} user={user} roles={roles} rolesById={rolesById} />
+            <UserRow
+              key={user.id}
+              user={user}
+              assignableRoles={assignableRoles}
+              rolesById={rolesById}
+              canManageRole={canManageRole}
+            />
           ))
         )}
       </div>
@@ -57,12 +79,14 @@ export function UsersManager({ users, roles }: Props) {
 
 function UserRow({
   user,
-  roles,
+  assignableRoles,
   rolesById,
+  canManageRole,
 }: {
   user: AdminUserRow;
-  roles: Role[];
+  assignableRoles: Role[];
   rolesById: Map<string, Role>;
+  canManageRole: (roleId: string) => boolean;
 }) {
   const router = useRouter();
   const [localRoleIds, setLocalRoleIds] = useState<string[]>(user.role_ids);
@@ -84,6 +108,9 @@ function UserRow({
       if (res.ok) {
         setLocalRoleIds((prev) => [...prev, roleId]);
         router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to add role");
       }
     } finally {
       setBusy(false);
@@ -100,13 +127,16 @@ function UserRow({
       if (res.ok) {
         setLocalRoleIds((prev) => prev.filter((id) => id !== roleId));
         router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to remove role");
       }
     } finally {
       setBusy(false);
     }
   }
 
-  const unassigned = roles.filter((r) => !localRoleIds.includes(r.id));
+  const unassigned = assignableRoles.filter((r) => !localRoleIds.includes(r.id));
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
@@ -130,6 +160,7 @@ function UserRow({
           {localRoleIds.map((rid) => {
             const role = rolesById.get(rid);
             if (!role) return null;
+            const manageable = canManageRole(rid);
             return (
               <span
                 key={rid}
@@ -141,14 +172,16 @@ function UserRow({
                 }}
               >
                 {role.name}
-                <button
-                  onClick={() => removeRole(rid)}
-                  disabled={busy}
-                  className="ml-0.5 hover:opacity-70"
-                  title="Remove role"
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
+                {manageable && (
+                  <button
+                    onClick={() => removeRole(rid)}
+                    disabled={busy}
+                    className="ml-0.5 hover:opacity-70"
+                    title="Remove role"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                )}
               </span>
             );
           })}

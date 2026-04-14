@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { getUserAccess } from "@/lib/access";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -17,7 +18,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq("id", user.id)
     .single();
 
-  if (!profile?.is_admin) redirect("/chat");
+  const isAdmin = !!profile?.is_admin;
+  const access = await getUserAccess(supabase, user.id);
+
+  // Superadmins + delegated managers (any role with can_manage=true) can
+  // see the admin UI. Everyone else bounces back to chat.
+  if (!isAdmin && !access.canManage) redirect("/chat");
 
   return (
     <div className="min-h-screen bg-background">
@@ -34,7 +40,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <AdminTab href="/admin/roles" label="Roles" />
           <AdminTab href="/admin/groups" label="Channel Groups" />
           <AdminTab href="/admin/users" label="Users" />
-          <AdminTab href="/settings" label="Channels" />
+          {/* Channels (platform connections) stay superadmin-only since they
+              require bot tokens and workspace-level secrets. */}
+          {isAdmin && <AdminTab href="/settings" label="Channels" />}
         </nav>
         {children}
       </div>

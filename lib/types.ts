@@ -5,6 +5,13 @@ export interface Role {
   name: string;
   color: string; // hex e.g. "#FFA800"
   priority: number;
+  /**
+   * Delegated admin flag. Users holding a role with `can_manage = true`
+   * get access to the scoped admin UI — they can assign, create, and
+   * delete roles / channel groups strictly below their own effective
+   * priority. `is_admin` on profiles is still a separate superadmin flag.
+   */
+  can_manage: boolean;
   created_at: string;
 }
 

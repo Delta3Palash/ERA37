@@ -1,28 +1,23 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { canManagePriority, requireManagerOrAdmin } from "@/lib/access";
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
+async function gateGroup(groupId: string, svc: ReturnType<typeof createServiceClient>) {
+  const { data: group } = await svc
+    .from("channel_groups")
+    .select("min_role_priority")
+    .eq("id", groupId)
     .single();
-  if (!profile?.is_admin)
-    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
-  return { user };
+  return group;
 }
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id: groupId } = await params;
   const { connectionId } = await req.json();
@@ -30,6 +25,16 @@ export async function POST(
     return NextResponse.json({ error: "connectionId required" }, { status: 400 });
 
   const svc = createServiceClient();
+  const group = await gateGroup(groupId, svc);
+  if (!group) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, group.min_role_priority)) {
+    return NextResponse.json(
+      { error: "You cannot edit connections on a group at or above your priority" },
+      { status: 403 }
+    );
+  }
+
   const { error } = await svc
     .from("channel_group_connections")
     .insert({ group_id: groupId, connection_id: connectionId });
@@ -42,8 +47,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id: groupId } = await params;
   const { searchParams } = new URL(req.url);
@@ -52,6 +58,16 @@ export async function DELETE(
     return NextResponse.json({ error: "connectionId required" }, { status: 400 });
 
   const svc = createServiceClient();
+  const group = await gateGroup(groupId, svc);
+  if (!group) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, group.min_role_priority)) {
+    return NextResponse.json(
+      { error: "You cannot edit connections on a group at or above your priority" },
+      { status: 403 }
+    );
+  }
+
   const { error } = await svc
     .from("channel_group_connections")
     .delete()

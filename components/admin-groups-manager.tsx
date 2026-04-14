@@ -18,6 +18,8 @@ interface Props {
   initialGroups: GroupRow[];
   connections: Connection[];
   roles: Role[];
+  isAdmin: boolean;
+  userPriority: number;
 }
 
 function platformIcon(platform: Platform) {
@@ -35,7 +37,13 @@ function platformIcon(platform: Platform) {
   }
 }
 
-export function GroupsManager({ initialGroups, connections, roles }: Props) {
+export function GroupsManager({
+  initialGroups,
+  connections,
+  roles,
+  isAdmin,
+  userPriority,
+}: Props) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -43,6 +51,16 @@ export function GroupsManager({ initialGroups, connections, roles }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Delegated managers can't set min_role_priority >= their own priority.
+  const assignableRoles = isAdmin
+    ? roles
+    : roles.filter((r) => r.priority < userPriority);
+
+  function canEditGroup(g: GroupRow): boolean {
+    if (isAdmin) return true;
+    return g.min_role_priority < userPriority;
+  }
 
   async function createGroup() {
     if (!name.trim()) return;
@@ -107,7 +125,11 @@ export function GroupsManager({ initialGroups, connections, roles }: Props) {
               placeholder="Group name (e.g. R4 Officers)"
               className="flex-1 px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent"
             />
-            <MinPrioritySelect value={minPriority} onChange={setMinPriority} roles={roles} />
+            <MinPrioritySelect
+              value={minPriority}
+              onChange={setMinPriority}
+              roles={assignableRoles}
+            />
           </div>
 
           <div>
@@ -146,7 +168,13 @@ export function GroupsManager({ initialGroups, connections, roles }: Props) {
           <p className="text-sm text-muted text-center py-6">No groups yet.</p>
         ) : (
           initialGroups.map((g) => (
-            <GroupRowView key={g.id} group={g} connections={connections} roles={roles} />
+            <GroupRowView
+              key={g.id}
+              group={g}
+              connections={connections}
+              roles={assignableRoles}
+              canEdit={canEditGroup(g)}
+            />
           ))
         )}
       </div>
@@ -227,10 +255,12 @@ function GroupRowView({
   group,
   connections,
   roles,
+  canEdit,
 }: {
   group: GroupRow;
   connections: Connection[];
   roles: Role[];
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -353,13 +383,18 @@ function GroupRowView({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setEditing(true)} className="text-xs text-accent hover:underline">
-            Edit
-          </button>
+          {canEdit ? (
+            <button onClick={() => setEditing(true)} className="text-xs text-accent hover:underline">
+              Edit
+            </button>
+          ) : (
+            <span className="text-xs text-muted/60">locked</span>
+          )}
           <button
             onClick={remove}
-            className="p-1 rounded text-red-400 hover:bg-red-900/20"
-            title="Delete group"
+            disabled={!canEdit}
+            className="p-1 rounded text-red-400 hover:bg-red-900/20 disabled:opacity-30 disabled:cursor-not-allowed"
+            title={canEdit ? "Delete group" : "Above your priority"}
           >
             <Trash2 className="w-4 h-4" />
           </button>

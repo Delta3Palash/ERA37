@@ -32,6 +32,7 @@ export default async function ChatLayout({
         profile={profile}
         groups={access.groups}
         isAdmin={profile?.is_admin || false}
+        canOpenAdmin={(profile?.is_admin || false) || access.canManage}
       />
       <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
     </ChatLayoutWrapper>
