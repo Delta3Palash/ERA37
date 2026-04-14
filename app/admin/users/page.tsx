@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { UsersManager } from "@/components/admin-users-manager";
 import type { Role } from "@/lib/types";
 
@@ -14,8 +14,13 @@ export interface AdminUserRow {
 
 export default async function AdminUsersPage() {
   const supabase = await createClient();
+  // The layout already gates /admin behind is_admin, so it's safe to use the
+  // service client here. We need it because the `profiles` RLS policy
+  // restricts SELECT to `auth.uid() = id` — the authed client can only see
+  // the current user's own row.
+  const svc = createServiceClient();
 
-  const { data: profiles } = await supabase
+  const { data: profiles } = await svc
     .from("profiles")
     .select("id, display_name, avatar_url, is_admin")
     .order("display_name", { ascending: true });
@@ -29,7 +34,7 @@ export default async function AdminUsersPage() {
     (byProfile[a.profile_id] ||= []).push(a.role_id);
   }
 
-  const users: AdminUserRow[] = (profiles || []).map((p) => ({
+  const users: AdminUserRow[] = ((profiles as any[]) || []).map((p) => ({
     id: p.id,
     display_name: p.display_name,
     avatar_url: p.avatar_url,
