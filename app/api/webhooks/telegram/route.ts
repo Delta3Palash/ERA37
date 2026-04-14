@@ -22,7 +22,22 @@ export async function POST(req: NextRequest) {
   const hasText = !!msg.text || !!msg.caption;
   const hasPhoto = !!msg.photo && msg.photo.length > 0;
 
-  if (!hasText && !hasPhoto) {
+  // GIFs from Telegram's native keyboard come as `animation` (mp4), generic
+  // uploads as `document`, videos as `video`, stickers as `sticker`. All of
+  // these need to pass through, not just plain photos.
+  const mediaFileId =
+    (msg.photo && msg.photo[msg.photo.length - 1]?.file_id) ||
+    msg.animation?.file_id ||
+    msg.video?.file_id ||
+    msg.video_note?.file_id ||
+    msg.document?.file_id ||
+    (msg.sticker && (msg.sticker.is_video || msg.sticker.is_animated)
+      ? msg.sticker.file_id
+      : undefined) ||
+    null;
+  const hasMedia = !!mediaFileId;
+
+  if (!hasText && !hasMedia) {
     return NextResponse.json({ ok: true });
   }
 
@@ -48,11 +63,10 @@ export async function POST(req: NextRequest) {
 
     const senderName = msg.from.username || msg.from.first_name;
 
-    // Get image URL if photo
+    // Resolve a downloadable URL for whichever media type was present.
     let imageUrl: string | null = null;
-    if (hasPhoto) {
-      const largestPhoto = msg.photo![msg.photo!.length - 1];
-      imageUrl = await getTelegramFileUrl(botToken, largestPhoto.file_id);
+    if (mediaFileId) {
+      imageUrl = await getTelegramFileUrl(botToken, mediaFileId);
     }
 
     // Resolve reply reference
@@ -76,7 +90,7 @@ export async function POST(req: NextRequest) {
       content: msg.text || msg.caption || null,
       image_url: imageUrl,
       direction: "incoming",
-      message_type: hasPhoto ? "image" : "text",
+      message_type: hasMedia ? "image" : "text",
       reply_to_message_id: replyToId,
     });
 

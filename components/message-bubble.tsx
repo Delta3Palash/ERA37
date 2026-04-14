@@ -29,6 +29,13 @@ function getUsernameColor(name: string): string {
   return USERNAME_COLORS[Math.abs(hash) % USERNAME_COLORS.length];
 }
 
+// Telegram transcodes GIFs to mp4, and Slack allows direct .mp4 uploads, so
+// an `image_url` can point at a video file. Detect it by extension and
+// render a <video> tag instead of <img> (which would show nothing).
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+}
+
 interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
@@ -167,15 +174,28 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
           </div>
         )}
 
-        {/* Image */}
+        {/* Image / video / GIF-as-mp4 */}
         {message.image_url && (
           <div className="mt-1">
-            <img
-              src={message.image_url}
-              alt=""
-              className="rounded-lg max-w-sm max-h-72 object-contain cursor-pointer"
-              onClick={() => window.open(message.image_url!, "_blank")}
-            />
+            {isVideoUrl(message.image_url) ? (
+              <video
+                src={message.image_url}
+                autoPlay
+                loop
+                muted
+                playsInline
+                controls
+                className="rounded-lg max-w-sm max-h-72 object-contain cursor-pointer"
+                onClick={() => window.open(message.image_url!, "_blank")}
+              />
+            ) : (
+              <img
+                src={message.image_url}
+                alt=""
+                className="rounded-lg max-w-sm max-h-72 object-contain cursor-pointer"
+                onClick={() => window.open(message.image_url!, "_blank")}
+              />
+            )}
           </div>
         )}
 

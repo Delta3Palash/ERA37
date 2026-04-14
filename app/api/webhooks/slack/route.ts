@@ -68,12 +68,19 @@ async function handleSlackMessage(teamId: string, event: any) {
       }
     } catch {}
 
-    // Check for images in files
+    // Check for images/GIFs/videos in files. GIF uploads come through as
+    // `image/gif`, and Slack's native video upload is `video/mp4` — both
+    // should bridge through. Note: Slack's `url_private` requires auth to
+    // download, so remote platforms will only render it if Slack has made
+    // the file publicly accessible (e.g. via permalink_public).
     let imageUrl: string | null = null;
     if (event.files && event.files.length > 0) {
-      const imageFile = event.files.find((f: any) => f.mimetype?.startsWith("image/"));
-      if (imageFile) {
-        imageUrl = imageFile.url_private;
+      const mediaFile = event.files.find(
+        (f: any) =>
+          f.mimetype?.startsWith("image/") || f.mimetype?.startsWith("video/")
+      );
+      if (mediaFile) {
+        imageUrl = mediaFile.permalink_public || mediaFile.url_private;
       }
     }
 
