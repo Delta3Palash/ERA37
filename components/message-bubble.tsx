@@ -104,7 +104,7 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
             </div>
           )
         ) : (
-          <span className="text-[10px] text-muted opacity-0 group-hover:opacity-100 transition-opacity leading-[1.375rem] block text-right">
+          <span className="text-[10px] text-muted md:opacity-0 md:group-hover:opacity-100 transition-opacity leading-[1.375rem] block text-right">
             {format(new Date(message.created_at), "h:mm")}
           </span>
         )}
@@ -185,7 +185,7 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
         )}
 
         {/* Action buttons — show on hover */}
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 flex items-center gap-3">
+        <div className="md:opacity-0 md:group-hover:opacity-100 transition-opacity mt-0.5 flex items-center gap-3">
           {onReply && (
             <button
               onClick={() => onReply(message)}
