@@ -23,9 +23,14 @@ interface ChatSidebarProps {
   profile: Profile | null;
   groups: (ChannelGroup & { connections: Connection[] })[];
   isAdmin: boolean;
+  /**
+   * True for superadmins AND for users holding a role with can_manage=true.
+   * Controls visibility of the admin shield icon + the Settings gear.
+   */
+  canOpenAdmin: boolean;
 }
 
-export function ChatSidebar({ userId, profile, groups, isAdmin }: ChatSidebarProps) {
+export function ChatSidebar({ userId, profile, groups, isAdmin, canOpenAdmin }: ChatSidebarProps) {
   const [openGroupIds, setOpenGroupIds] = useState<Record<string, boolean>>(() => {
     // Open all groups by default so users see their options
     const map: Record<string, boolean> = {};
@@ -115,22 +120,26 @@ export function ChatSidebar({ userId, profile, groups, isAdmin }: ChatSidebarPro
           <h1 className="text-lg font-bold">
             ERA<span className="text-accent">37</span>
           </h1>
-          {isAdmin && (
+          {(canOpenAdmin || isAdmin) && (
             <div className="flex items-center gap-1">
-              <button
-                onClick={() => navigate("/admin/roles")}
-                className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
-                title="Admin"
-              >
-                <Shield className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => navigate("/settings")}
-                className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
-                title="Settings"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
+              {canOpenAdmin && (
+                <button
+                  onClick={() => navigate("/admin/roles")}
+                  className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
+                  title="Admin"
+                >
+                  <Shield className="w-4 h-4" />
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => navigate("/settings")}
+                  className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
+                  title="Channel settings"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              )}
             </div>
           )}
         </div>

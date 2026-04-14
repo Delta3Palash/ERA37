@@ -227,3 +227,14 @@ CREATE POLICY "Admins manage channel_group_connections" ON channel_group_connect
   FOR ALL USING (
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
   );
+
+-- =============================================================
+-- Phase 1.5: Delegated role management
+-- =============================================================
+-- Roles marked `can_manage = true` allow their holders to access the
+-- admin UI with a scoped view: they can manage users, roles, and
+-- channel groups STRICTLY below their own effective priority. Enforcement
+-- happens in API routes — RLS stays as-is (admin_manage policies above
+-- still require is_admin because they're used for service-client writes).
+
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS can_manage BOOLEAN NOT NULL DEFAULT false;

@@ -2,32 +2,48 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Save, X } from "lucide-react";
+import { Plus, Trash2, Save, X, Shield } from "lucide-react";
 import type { Role } from "@/lib/types";
 
 interface Props {
   initial: Role[];
   assignmentCounts: Record<string, number>;
+  isAdmin: boolean;
+  userPriority: number;
 }
 
-export function RolesManager({ initial, assignmentCounts }: Props) {
+export function RolesManager({ initial, assignmentCounts, isAdmin, userPriority }: Props) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState("#FFA800");
   const [priority, setPriority] = useState(10);
+  const [canManage, setCanManage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Delegated managers can only create roles strictly below their own
+  // priority; superadmins have no ceiling.
+  const priorityCeiling = isAdmin ? Number.POSITIVE_INFINITY : userPriority;
+
+  function canEditRole(role: Role): boolean {
+    if (isAdmin) return true;
+    return role.priority < userPriority;
+  }
+
   async function createRole() {
     if (!name.trim()) return;
+    if (priority >= priorityCeiling) {
+      setError(`Priority must be below your own (${userPriority})`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/admin/roles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), color, priority }),
+        body: JSON.stringify({ name: name.trim(), color, priority, can_manage: canManage }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -36,6 +52,7 @@ export function RolesManager({ initial, assignmentCounts }: Props) {
       setName("");
       setColor("#FFA800");
       setPriority(10);
+      setCanManage(false);
       setCreating(false);
       router.refresh();
     } catch (e: any) {
@@ -51,7 +68,9 @@ export function RolesManager({ initial, assignmentCounts }: Props) {
         <div>
           <h2 className="text-lg font-semibold">Roles</h2>
           <p className="text-sm text-muted">
-            Higher priority can access more channel groups. Admin stays separate — assign any role to admins.
+            {isAdmin
+              ? "Higher priority can access more channel groups. Mark a role as manager to let its holders delegate admin tasks."
+              : `You can manage roles with priority below ${userPriority}.`}
           </p>
         </div>
         {!creating && (
@@ -87,9 +106,25 @@ export function RolesManager({ initial, assignmentCounts }: Props) {
               onChange={(e) => setPriority(Number(e.target.value))}
               placeholder="Priority"
               className="w-24 px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground focus:outline-none focus:border-accent"
-              title="Priority (higher = more senior)"
+              title={
+                isAdmin
+                  ? "Priority (higher = more senior)"
+                  : `Priority must be below your own (${userPriority})`
+              }
             />
           </div>
+          {isAdmin && (
+            <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={canManage}
+                onChange={(e) => setCanManage(e.target.checked)}
+                className="accent-accent"
+              />
+              <Shield className="w-3 h-3" />
+              <span>Can manage lower-priority roles, groups, and user assignments</span>
+            </label>
+          )}
           <div className="flex gap-2">
             <button
               onClick={createRole}
@@ -121,6 +156,9 @@ export function RolesManager({ initial, assignmentCounts }: Props) {
               key={role.id}
               role={role}
               assignmentCount={assignmentCounts[role.id] || 0}
+              canEdit={canEditRole(role)}
+              isAdmin={isAdmin}
+              userPriority={userPriority}
             />
           ))
         )}
@@ -129,12 +167,25 @@ export function RolesManager({ initial, assignmentCounts }: Props) {
   );
 }
 
-function RoleRow({ role, assignmentCount }: { role: Role; assignmentCount: number }) {
+function RoleRow({
+  role,
+  assignmentCount,
+  canEdit,
+  isAdmin,
+  userPriority,
+}: {
+  role: Role;
+  assignmentCount: number;
+  canEdit: boolean;
+  isAdmin: boolean;
+  userPriority: number;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(role.name);
   const [color, setColor] = useState(role.color);
   const [priority, setPriority] = useState(role.priority);
+  const [canManage, setCanManage] = useState(role.can_manage);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,10 +193,12 @@ function RoleRow({ role, assignmentCount }: { role: Role; assignmentCount: numbe
     setSaving(true);
     setError(null);
     try {
+      const body: any = { name, color, priority };
+      if (isAdmin) body.can_manage = canManage;
       const res = await fetch(`/api/admin/roles/${role.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color, priority }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -192,8 +245,23 @@ function RoleRow({ role, assignmentCount }: { role: Role; assignmentCount: numbe
             value={priority}
             onChange={(e) => setPriority(Number(e.target.value))}
             className="w-24 px-3 py-1.5 rounded-lg bg-surface border border-border text-sm text-foreground"
+            title={
+              isAdmin ? "Priority" : `Must stay below your priority (${userPriority})`
+            }
           />
         </div>
+        {isAdmin && (
+          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={canManage}
+              onChange={(e) => setCanManage(e.target.checked)}
+              className="accent-accent"
+            />
+            <Shield className="w-3 h-3" />
+            <span>Can manage lower-priority roles and groups</span>
+          </label>
+        )}
         <div className="flex gap-2">
           <button
             onClick={save}
@@ -228,21 +296,36 @@ function RoleRow({ role, assignmentCount }: { role: Role; assignmentCount: numbe
           {role.name}
         </span>
         <span className="text-xs text-muted">priority {role.priority}</span>
+        {role.can_manage && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-accent">
+            <Shield className="w-3 h-3" /> manager
+          </span>
+        )}
         <span className="text-xs text-muted">
           {assignmentCount} user{assignmentCount === 1 ? "" : "s"}
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setEditing(true)}
-          className="text-xs text-accent hover:underline"
-        >
-          Edit
-        </button>
+        {canEdit ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-accent hover:underline"
+          >
+            Edit
+          </button>
+        ) : (
+          <span className="text-xs text-muted/60">locked</span>
+        )}
         <button
           onClick={remove}
-          disabled={assignmentCount > 0}
-          title={assignmentCount > 0 ? "Remove role from all users first" : "Delete role"}
+          disabled={!canEdit || assignmentCount > 0}
+          title={
+            !canEdit
+              ? "Above your priority"
+              : assignmentCount > 0
+                ? "Remove role from all users first"
+                : "Delete role"
+          }
           className="p-1 rounded text-red-400 hover:bg-red-900/20 disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Trash2 className="w-4 h-4" />

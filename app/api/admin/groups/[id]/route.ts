@@ -1,31 +1,32 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-  if (!profile?.is_admin)
-    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
-  return { user };
-}
+import { canManagePriority, requireManagerOrAdmin } from "@/lib/access";
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id } = await params;
   const body = await req.json();
+  const svc = createServiceClient();
+
+  const { data: current } = await svc
+    .from("channel_groups")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (!current) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, current.min_role_priority)) {
+    return NextResponse.json(
+      { error: "You cannot edit a group at or above your priority" },
+      { status: 403 }
+    );
+  }
 
   const patch: Record<string, unknown> = {};
   if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
@@ -33,6 +34,12 @@ export async function PUT(
     const p = Number(body.min_role_priority);
     if (!Number.isFinite(p))
       return NextResponse.json({ error: "min_role_priority must be a number" }, { status: 400 });
+    if (!canManagePriority(auth.ctx, p)) {
+      return NextResponse.json(
+        { error: "New min_role_priority must be below your own" },
+        { status: 403 }
+      );
+    }
     patch.min_role_priority = p;
   }
   if (body.sort_order !== undefined) {
@@ -45,7 +52,6 @@ export async function PUT(
   if (Object.keys(patch).length === 0)
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
 
-  const svc = createServiceClient();
   const { data, error } = await svc
     .from("channel_groups")
     .update(patch)
@@ -60,13 +66,27 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id } = await params;
   const svc = createServiceClient();
 
-  // FK cascade handles channel_group_connections
+  const { data: current } = await svc
+    .from("channel_groups")
+    .select("min_role_priority")
+    .eq("id", id)
+    .single();
+  if (!current) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, current.min_role_priority)) {
+    return NextResponse.json(
+      { error: "You cannot delete a group at or above your priority" },
+      { status: 403 }
+    );
+  }
+
   const { error } = await svc.from("channel_groups").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

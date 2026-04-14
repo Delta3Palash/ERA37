@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { UsersManager } from "@/components/admin-users-manager";
+import { getUserAccess } from "@/lib/access";
 import type { Role } from "@/lib/types";
 
 export interface AdminUserRow {
@@ -14,18 +15,27 @@ export interface AdminUserRow {
 
 export default async function AdminUsersPage() {
   const supabase = await createClient();
-  // The layout already gates /admin behind is_admin, so it's safe to use the
-  // service client here. We need it because the `profiles` RLS policy
-  // restricts SELECT to `auth.uid() = id` — the authed client can only see
-  // the current user's own row.
+  // The layout already gates /admin, but the `profiles` RLS policy
+  // restricts SELECT to `auth.uid() = id` — so we need the service client
+  // to list all members.
   const svc = createServiceClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: callerProfile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user!.id)
+    .single();
+  const access = await getUserAccess(supabase, user!.id);
 
   const { data: profiles } = await svc
     .from("profiles")
     .select("id, display_name, avatar_url, is_admin")
     .order("display_name", { ascending: true });
 
-  const { data: assignments } = await supabase
+  const { data: assignments } = await svc
     .from("profile_roles")
     .select("profile_id, role_id");
 
@@ -42,10 +52,17 @@ export default async function AdminUsersPage() {
     role_ids: byProfile[p.id] || [],
   }));
 
-  const { data: roles } = await supabase
+  const { data: roles } = await svc
     .from("roles")
     .select("*")
     .order("priority", { ascending: false });
 
-  return <UsersManager users={users} roles={(roles as Role[]) || []} />;
+  return (
+    <UsersManager
+      users={users}
+      roles={(roles as Role[]) || []}
+      isAdmin={!!callerProfile?.is_admin}
+      userPriority={access.userPriority}
+    />
+  );
 }

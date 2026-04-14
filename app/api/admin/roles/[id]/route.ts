@@ -1,31 +1,34 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-  if (!profile?.is_admin)
-    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
-  return { user };
-}
+import { canManagePriority, requireManagerOrAdmin } from "@/lib/access";
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id } = await params;
   const body = await req.json();
+  const svc = createServiceClient();
+
+  // Fetch the current role so we can priority-gate the edit.
+  const { data: current } = await svc
+    .from("roles")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (!current) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+
+  // Managers can only edit roles strictly below their priority. Superadmins pass.
+  if (!canManagePriority(auth.ctx, current.priority)) {
+    return NextResponse.json(
+      { error: "You cannot edit a role at or above your own priority" },
+      { status: 403 }
+    );
+  }
 
   const patch: Record<string, unknown> = {};
   if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
@@ -38,13 +41,28 @@ export async function PUT(
     const p = Number(body.priority);
     if (!Number.isFinite(p))
       return NextResponse.json({ error: "Priority must be a number" }, { status: 400 });
+    // A manager can't raise a role above or equal to their own priority.
+    if (!canManagePriority(auth.ctx, p)) {
+      return NextResponse.json(
+        { error: "New priority must be below your own" },
+        { status: 403 }
+      );
+    }
     patch.priority = p;
+  }
+  if (body.can_manage !== undefined) {
+    if (!auth.ctx.isAdmin) {
+      return NextResponse.json(
+        { error: "Only superadmins can toggle can_manage" },
+        { status: 403 }
+      );
+    }
+    patch.can_manage = !!body.can_manage;
   }
 
   if (Object.keys(patch).length === 0)
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
 
-  const svc = createServiceClient();
   const { data, error } = await svc
     .from("roles")
     .update(patch)
@@ -59,11 +77,26 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id } = await params;
   const svc = createServiceClient();
+
+  const { data: current } = await svc
+    .from("roles")
+    .select("priority")
+    .eq("id", id)
+    .single();
+  if (!current) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, current.priority)) {
+    return NextResponse.json(
+      { error: "You cannot delete a role at or above your own priority" },
+      { status: 403 }
+    );
+  }
 
   // Refuse if assigned to any profile
   const { count } = await svc

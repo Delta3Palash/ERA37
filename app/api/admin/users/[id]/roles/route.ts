@@ -1,35 +1,37 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single();
-  if (!profile?.is_admin)
-    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
-  return { user };
-}
+import { canManagePriority, requireManagerOrAdmin } from "@/lib/access";
 
 // Assign a role to a user
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id: profileId } = await params;
   const { roleId } = await req.json();
   if (!roleId) return NextResponse.json({ error: "roleId required" }, { status: 400 });
 
   const svc = createServiceClient();
+
+  // Look up the target role's priority and gate on it.
+  const { data: role } = await svc
+    .from("roles")
+    .select("priority")
+    .eq("id", roleId)
+    .single();
+  if (!role) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, role.priority)) {
+    return NextResponse.json(
+      { error: "You cannot assign a role at or above your priority" },
+      { status: 403 }
+    );
+  }
+
   const { error } = await svc
     .from("profile_roles")
     .insert({ profile_id: profileId, role_id: roleId });
@@ -43,8 +45,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const check = await requireAdmin();
-  if (check.error) return check.error;
+  const supabase = await createClient();
+  const auth = await requireManagerOrAdmin(supabase);
+  if (auth.error) return auth.error;
 
   const { id: profileId } = await params;
   const { searchParams } = new URL(req.url);
@@ -52,6 +55,21 @@ export async function DELETE(
   if (!roleId) return NextResponse.json({ error: "roleId required" }, { status: 400 });
 
   const svc = createServiceClient();
+
+  const { data: role } = await svc
+    .from("roles")
+    .select("priority")
+    .eq("id", roleId)
+    .single();
+  if (!role) return NextResponse.json({ error: "Role not found" }, { status: 404 });
+
+  if (!canManagePriority(auth.ctx, role.priority)) {
+    return NextResponse.json(
+      { error: "You cannot remove a role at or above your priority" },
+      { status: 403 }
+    );
+  }
+
   const { error } = await svc
     .from("profile_roles")
     .delete()

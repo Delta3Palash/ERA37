@@ -1,10 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
 import type { ChannelGroup, Connection, Role } from "@/lib/types";
 import { effectivePriority } from "@/lib/types";
 
 export interface UserAccess {
   userPriority: number;
   userRoles: Role[];
+  /**
+   * True when the user holds at least one role with `can_manage = true`.
+   * Independent of `is_admin` — a superadmin is always treated as having
+   * full management power regardless of `canManage`.
+   */
+  canManage: boolean;
   groups: (ChannelGroup & { connections: Connection[] })[];
   accessibleConnections: Connection[];
   accessibleConnectionIds: string[];
@@ -35,6 +42,7 @@ export async function getUserAccess(
     .filter(Boolean)
     .sort((a, b) => b.priority - a.priority);
   const userPriority = effectivePriority(userRoles);
+  const canManage = userRoles.some((r) => r.can_manage);
 
   // 2. All channel groups + their connections via the join table
   const { data: rawGroups } = await supabase
@@ -85,9 +93,67 @@ export async function getUserAccess(
   return {
     userPriority,
     userRoles,
+    canManage,
     groups,
     accessibleConnections,
     accessibleConnectionIds,
     roleMap,
   };
+}
+
+export interface AdminAuthContext {
+  userId: string;
+  isAdmin: boolean;
+  canManage: boolean;
+  userPriority: number;
+}
+
+/**
+ * Shared admin-API guard. Accepts either is_admin or a role with
+ * can_manage=true. Returns the caller's effective priority + flags so
+ * routes can enforce the "strictly below my priority" rule for
+ * delegated managers. Superadmins bypass the priority check.
+ */
+export async function requireManagerOrAdmin(
+  supabase: SupabaseClient
+): Promise<{ error: NextResponse; ctx?: undefined } | { error?: undefined; ctx: AdminAuthContext }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .single();
+  const isAdmin = !!profile?.is_admin;
+
+  const { data: assignments } = await supabase
+    .from("profile_roles")
+    .select("roles(*)")
+    .eq("profile_id", user.id);
+  const roles: Role[] = (assignments || [])
+    .map((r: any) => r.roles as Role)
+    .filter(Boolean);
+  const canManage = roles.some((r) => r.can_manage);
+  const userPriority = effectivePriority(roles);
+
+  if (!isAdmin && !canManage) {
+    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
+  }
+
+  return { ctx: { userId: user.id, isAdmin, canManage, userPriority } };
+}
+
+/**
+ * Check whether the caller can manage something at the given priority.
+ * Superadmins pass unconditionally; delegated managers require their
+ * effective priority to be STRICTLY greater than the target's priority.
+ */
+export function canManagePriority(ctx: AdminAuthContext, targetPriority: number): boolean {
+  if (ctx.isAdmin) return true;
+  return ctx.canManage && ctx.userPriority > targetPriority;
 }
