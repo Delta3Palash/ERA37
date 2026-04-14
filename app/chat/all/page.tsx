@@ -3,10 +3,13 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { UnifiedView } from "@/components/unified-view";
+import { getUserAccess } from "@/lib/access";
 
 export default async function AllMessagesPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
 
   const { data: profile } = await supabase
@@ -15,14 +18,12 @@ export default async function AllMessagesPage() {
     .eq("id", user.id)
     .single();
 
-  const { data: connections } = await supabase
-    .from("connections")
-    .select("*")
-    .order("platform");
+  const access = await getUserAccess(supabase, user.id);
 
   return (
     <UnifiedView
-      connections={connections || []}
+      connections={access.accessibleConnections}
+      roleMap={access.roleMap}
       userId={user.id}
       userName={profile?.display_name || "User"}
       preferredLanguage={profile?.preferred_language || "en"}

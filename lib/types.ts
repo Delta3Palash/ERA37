@@ -1,5 +1,22 @@
 export type Platform = "telegram" | "discord" | "slack" | "whatsapp";
 
+export interface Role {
+  id: string;
+  name: string;
+  color: string; // hex e.g. "#FFA800"
+  priority: number;
+  created_at: string;
+}
+
+export interface ChannelGroup {
+  id: string;
+  name: string;
+  min_role_priority: number;
+  sort_order: number;
+  created_at: string;
+  connections?: Connection[];
+}
+
 export interface Profile {
   id: string;
   display_name: string | null;
@@ -9,6 +26,16 @@ export interface Profile {
   is_admin: boolean;
   tos_accepted_at: string | null;
   created_at: string;
+  roles?: Role[];
+}
+
+/**
+ * Highest priority across a user's roles. A user with no roles has
+ * effective priority 0 — they only see groups with min_role_priority=0.
+ */
+export function effectivePriority(roles: Role[] | null | undefined): number {
+  if (!roles || roles.length === 0) return 0;
+  return Math.max(...roles.map((r) => r.priority));
 }
 
 export interface Workspace {

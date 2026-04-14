@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Languages, Check, ArrowRightLeft, Reply } from "lucide-react";
 import { format } from "date-fns";
-import type { Message } from "@/lib/types";
+import type { Message, Role } from "@/lib/types";
 
 // Discord-style username colors — deterministic based on name
 const USERNAME_COLORS = [
@@ -36,9 +36,11 @@ interface MessageBubbleProps {
   showHeader?: boolean;
   replyToMessage?: Message | null;
   onReply?: (message: Message) => void;
+  roleMap?: Record<string, Role[]>;
 }
 
-export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true, replyToMessage, onReply }: MessageBubbleProps) {
+export function MessageBubble({ message, currentUserId, preferredLanguage, showHeader = true, replyToMessage, onReply, roleMap }: MessageBubbleProps) {
+  const senderRoles = message.sent_by ? roleMap?.[message.sent_by] : undefined;
   const [translatedText, setTranslatedText] = useState(message.translated_content);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -113,13 +115,30 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
       {/* Content column */}
       <div className="flex-1 min-w-0">
         {showHeader && (
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
             <span
               className="text-sm font-semibold"
               style={{ color: isOutgoing ? "var(--accent)" : getUsernameColor(senderName || "Unknown") }}
             >
               {senderName || "Unknown"}
             </span>
+            {senderRoles && senderRoles.length > 0 && (
+              <span className="flex items-center gap-1">
+                {senderRoles.map((role) => (
+                  <span
+                    key={role.id}
+                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border leading-none"
+                    style={{
+                      backgroundColor: `${role.color}22`,
+                      color: role.color,
+                      borderColor: `${role.color}55`,
+                    }}
+                  >
+                    {role.name}
+                  </span>
+                ))}
+              </span>
+            )}
             {isBridged && (message.metadata as any)?.source_platform && (
               <span className="text-[10px] text-muted flex items-center gap-0.5">
                 <ArrowRightLeft className="w-2.5 h-2.5 inline" />

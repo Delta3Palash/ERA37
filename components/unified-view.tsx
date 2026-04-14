@@ -9,16 +9,17 @@ import { isGifConfigured } from "@/lib/tenor";
 import { uploadImage } from "@/lib/upload";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
-import type { Connection, Message, Platform } from "@/lib/types";
+import type { Connection, Message, Platform, Role } from "@/lib/types";
 
 interface UnifiedViewProps {
   connections: Connection[];
+  roleMap?: Record<string, Role[]>;
   userId: string;
   userName: string;
   preferredLanguage: string;
 }
 
-export function UnifiedView({ connections, userId, userName, preferredLanguage }: UnifiedViewProps) {
+export function UnifiedView({ connections, roleMap, userId, userName, preferredLanguage }: UnifiedViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -316,6 +317,7 @@ export function UnifiedView({ connections, userId, userName, preferredLanguage }
                   showHeader={showHeader || !!msg.reply_to_message_id}
                   replyToMessage={msg.reply_to_message_id ? messageMap.get(msg.reply_to_message_id) : null}
                   onReply={(m) => { setReplyingTo(m); inputRef.current?.focus(); }}
+                  roleMap={roleMap}
                 />
               );
             });
