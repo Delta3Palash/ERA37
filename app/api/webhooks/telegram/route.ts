@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { getTelegramFileUrl } from "@/lib/telegram";
+import { downloadTelegramFile } from "@/lib/telegram";
+import { rehostBytes } from "@/lib/rehost";
 import { bridgeMessage } from "@/lib/bridge";
 import { NextRequest, NextResponse } from "next/server";
 import type { TelegramUpdate } from "@/lib/telegram";
@@ -63,10 +64,16 @@ export async function POST(req: NextRequest) {
 
     const senderName = msg.from.username || msg.from.first_name;
 
-    // Resolve a downloadable URL for whichever media type was present.
+    // Download the file from api.telegram.org and re-host it in Supabase
+    // Storage. We do NOT store the raw Telegram URL anywhere — it contains
+    // the bot token in the path and would leak to every platform we bridge
+    // to. Only the rehosted (tokenless) public URL goes into the DB.
     let imageUrl: string | null = null;
     if (mediaFileId) {
-      imageUrl = await getTelegramFileUrl(botToken, mediaFileId);
+      const file = await downloadTelegramFile(botToken, mediaFileId);
+      if (file) {
+        imageUrl = await rehostBytes(file.bytes, file.filename, file.contentType);
+      }
     }
 
     // Resolve reply reference

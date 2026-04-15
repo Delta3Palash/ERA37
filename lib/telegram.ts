@@ -41,6 +41,13 @@ export async function getTelegramBotInfo(botToken: string) {
   return res.json();
 }
 
+/**
+ * Resolve a Telegram `file_id` into a downloadable URL. WARNING: the raw
+ * URL returned by Telegram contains the bot token in the path
+ * (`https://api.telegram.org/file/bot{TOKEN}/...`). DO NOT expose this URL
+ * to end users or other platforms — it leaks the bot token. Use
+ * `downloadTelegramFile` instead when you need bytes for re-hosting.
+ */
 export async function getTelegramFileUrl(botToken: string, fileId: string): Promise<string | null> {
   try {
     const res = await fetch(`${TELEGRAM_API}${botToken}/getFile?file_id=${fileId}`);
@@ -51,6 +58,29 @@ export async function getTelegramFileUrl(botToken: string, fileId: string): Prom
     }
   } catch {}
   return null;
+}
+
+/**
+ * Fetch a Telegram file and return the raw bytes + a safe filename. The
+ * returned URL containing the bot token is only used for the one-shot
+ * download inside this function — it never leaves the server.
+ */
+export async function downloadTelegramFile(
+  botToken: string,
+  fileId: string
+): Promise<{ bytes: ArrayBuffer; filename: string; contentType: string } | null> {
+  const privateUrl = await getTelegramFileUrl(botToken, fileId);
+  if (!privateUrl) return null;
+
+  const res = await fetch(privateUrl);
+  if (!res.ok) return null;
+
+  const bytes = await res.arrayBuffer();
+  // Telegram file paths look like "animations/file_0.mp4" or "photos/file_123.jpg"
+  const pathname = privateUrl.split("/").slice(-2).join("/");
+  const filename = pathname.split("/").pop() || "file";
+  const contentType = res.headers.get("content-type") || "application/octet-stream";
+  return { bytes, filename, contentType };
 }
 
 interface TelegramFileMeta {
