@@ -69,20 +69,13 @@ export async function bridgeMessage(
     sourceConnection.platform.charAt(0).toUpperCase() + sourceConnection.platform.slice(1);
   const hasCaption = typeof content === "string" && content.trim().length > 0;
 
-  // Build the bridged text. Previously imageUrl was never included, so
-  // Telegram photos/GIFs and Slack file uploads were silently dropping their
-  // media when forwarded. Mirror the /api/messages/send behavior: with a
-  // caption the URL goes on a new line; image-only uses the zero-width
-  // hidden-link trick so Discord embeds cleanly without showing the URL.
+  // Build the bridged text WITHOUT the image URL. Media is passed as a
+  // structured option to sendMessage so each platform can attach it
+  // natively: Discord uses an embed (no URL in visible text), while
+  // Telegram/Slack/WhatsApp have the URL appended to the text body by
+  // the dispatcher for auto-preview.
   let bridgedContent = `[${platformName}] ${senderName}:`;
   if (hasCaption) bridgedContent += ` ${content}`;
-  if (imageUrl) {
-    if (hasCaption) {
-      bridgedContent += `\n${imageUrl}`;
-    } else {
-      bridgedContent += ` [\u200B](${imageUrl})`;
-    }
-  }
   bridgedContent = bridgedContent.trim();
 
   await Promise.allSettled(
@@ -91,7 +84,8 @@ export async function bridgeMessage(
         const result = await sendMessage(
           targetConn,
           targetConn.platform_channel_id,
-          bridgedContent
+          bridgedContent,
+          { imageUrl }
         );
 
         await supabase.from("messages").insert({

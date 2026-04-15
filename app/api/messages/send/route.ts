@@ -90,21 +90,12 @@ export async function POST(req: NextRequest) {
 
   const senderName = profile?.display_name || "User";
   const hasCaption = typeof content === "string" && content.trim().length > 0;
+  // Build just the text portion. Media is now passed to `sendMessage` as a
+  // structured `imageUrl` option, so Discord can attach it as an embed and
+  // the URL never renders as text. Telegram/Slack/WhatsApp still receive
+  // the URL appended to the text body by the platform dispatcher.
   let platformContent = `[${senderName}]`;
   if (hasCaption) platformContent += ` ${content}`;
-  if (imageUrl) {
-    if (hasCaption) {
-      // Caption + image: keep URL on a new line (preserves commit 96570d1 — we need
-      // the URL in the text for platforms that don't auto-embed).
-      platformContent += `\n${imageUrl}`;
-    } else {
-      // Image only (e.g. Klipy GIF with no caption): use a markdown hidden link
-      // with a zero-width space as the visible text. Discord still auto-embeds
-      // the URL but the link text is invisible, so the raw URL doesn't show up
-      // above the embed.
-      platformContent += ` [\u200B](${imageUrl})`;
-    }
-  }
 
   // Look up parent message's platform_message_id for native replies
   let replyPlatformIds: Map<string, string> | null = null;
@@ -177,7 +168,10 @@ export async function POST(req: NextRequest) {
     const results = await Promise.allSettled(
       connections.map(async (conn: any) => {
         const replyToPlatformId = replyPlatformIds?.get(conn.id) || null;
-        const result = await sendMessage(conn, conn.platform_channel_id, platformContent, replyToPlatformId);
+        const result = await sendMessage(conn, conn.platform_channel_id, platformContent, {
+          replyToPlatformId,
+          imageUrl: imageUrl || null,
+        });
 
         const { data: message, error } = await serviceClient
           .from("messages")
@@ -230,7 +224,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const replyToPlatformId = replyPlatformIds?.get(connectionId) || null;
-    const result = await sendMessage(connection, connection.platform_channel_id, platformContent, replyToPlatformId);
+    const result = await sendMessage(connection, connection.platform_channel_id, platformContent, {
+      replyToPlatformId,
+      imageUrl: imageUrl || null,
+    });
 
     const { data: message, error } = await serviceClient
       .from("messages")
