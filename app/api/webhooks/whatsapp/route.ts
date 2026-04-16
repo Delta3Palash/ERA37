@@ -125,7 +125,9 @@ async function handleIncomingMessage(
       if (parent) replyToId = parent.id;
     }
 
-    await supabase.from("messages").insert({
+    // supabase-js `.insert()` resolves with `{ error }` rather than throwing,
+    // so we must destructure to surface DB errors. Log and continue.
+    const { error: insertError } = await supabase.from("messages").insert({
       connection_id: connection.id,
       platform: "whatsapp",
       platform_message_id: msg.id,
@@ -137,6 +139,16 @@ async function handleIncomingMessage(
       message_type: messageType,
       reply_to_message_id: replyToId,
     });
+    if (insertError) {
+      console.error("[messages.insert] whatsapp incoming failed:", {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        connection_id: connection.id,
+        platform_message_id: msg.id,
+      });
+    }
 
     // Bridge to other platforms (separate try-catch)
     try {
