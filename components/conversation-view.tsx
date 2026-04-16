@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu, X, ImageIcon, Reply } from "lucide-react";
@@ -11,6 +11,8 @@ import { useSidebar } from "./chat-layout-wrapper";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useRouter } from "next/navigation";
 import type { Connection, Message, Platform, Role } from "@/lib/types";
+
+const PAGE_SIZE = 200;
 
 interface ConversationViewProps {
   connection: Connection;
@@ -29,11 +31,22 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const pendingPrependRef = useRef<{ prevScrollHeight: number } | null>(null);
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { toggle } = useSidebar();
+
+  // Mirror state into a ref so async callbacks (poll, infinite scroll) can
+  // read the *current* messages without stale-closure bugs.
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   function handleImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -88,7 +101,10 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
   }, []);
 
   useEffect(() => {
-    loadMessages();
+    // Reset pagination state when the connection changes.
+    setMessages([]);
+    setHasMoreOlder(true);
+    loadInitial();
 
     const channel = supabase
       .channel(`messages-${connection.id}`)
@@ -113,59 +129,138 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
     return () => { supabase.removeChannel(channel); };
   }, [connection.id]);
 
-  // Fallback polling + visibility refetch (handles silent WebSocket drops)
+  // Fallback delta poll + visibility refetch (handles silent WebSocket drops).
+  // Only fetches rows strictly newer than the newest we already have, so it
+  // cannot wipe out a row Realtime just delivered (the flash-and-disappear
+  // bug from replace-based polling).
   useEffect(() => {
-    function handleVisibility() {
-      if (document.visibilityState === "visible") {
-        loadMessages();
-      }
+    function tick() {
+      if (document.visibilityState === "visible") loadNewer();
     }
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    const poll = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadMessages();
-      }
-    }, 10000);
-
+    document.addEventListener("visibilitychange", tick);
+    const poll = setInterval(tick, 10000);
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", tick);
       clearInterval(poll);
     };
   }, [connection.id]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Scroll handling: auto-scroll to bottom only when the user is already
+  // near the bottom (new incoming message), and preserve position when a
+  // prepend from loadOlder lands.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (pendingPrependRef.current) {
+      // Keep the user anchored on the row they were reading when the
+      // older page was prepended.
+      el.scrollTop = el.scrollHeight - pendingPrependRef.current.prevScrollHeight;
+      pendingPrependRef.current = null;
+      return;
+    }
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 200) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
-  async function loadMessages() {
+  // Infinite scroll: load older when the user scrolls near the top.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function onScroll() {
+      if (!el) return;
+      if (el.scrollTop < 100 && hasMoreOlder && !loadingOlder) {
+        loadOlder();
+      }
+    }
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [hasMoreOlder, loadingOlder]);
+
+  async function loadInitial() {
+    // Newest PAGE_SIZE first (descending) then reversed for display. Avoids
+    // hitting PostgREST's default row cap (1000) and returning the oldest
+    // slice — we want the user's eyeballs on the latest conversation.
     const { data } = await supabase
       .from("messages")
       .select("*")
       .eq("connection_id", connection.id)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
     if (!data) return;
+    if (data.length < PAGE_SIZE) setHasMoreOlder(false);
+    const ordered = [...data].reverse();
     setMessages((prev) => {
-      // Fast-path: if the server returns the same last id and same length,
-      // nothing changed — skip the re-render.
-      if (
-        prev.length === data.length &&
-        prev[prev.length - 1]?.id === data[data.length - 1]?.id
-      ) {
-        return prev;
-      }
-      // Merge server rows with any local rows not yet visible to the poll
-      // (Realtime can deliver a row before PostgREST serves it under the
-      // user's JWT, and replacing state wholesale would wipe the flashed
-      // message). Messages are append-only here, so keeping local extras is
-      // safe — any real divergence resolves on the next poll.
+      if (prev.length === 0) return ordered;
+      // A Realtime event may have landed during the initial fetch —
+      // merge by id so we don't drop it.
       const byId = new Map<string, Message>();
-      for (const m of data) byId.set(m.id, m);
+      for (const m of ordered) byId.set(m.id, m);
       for (const m of prev) if (!byId.has(m.id)) byId.set(m.id, m);
       return Array.from(byId.values()).sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
     });
+  }
+
+  async function loadNewer() {
+    const current = messagesRef.current;
+    if (current.length === 0) return loadInitial();
+    const newest = current[current.length - 1]?.created_at;
+    if (!newest) return;
+    const { data } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("connection_id", connection.id)
+      .gt("created_at", newest)
+      .order("created_at", { ascending: true })
+      .limit(PAGE_SIZE);
+    if (!data || data.length === 0) return;
+    setMessages((prev) => {
+      const byId = new Map<string, Message>();
+      for (const m of prev) byId.set(m.id, m);
+      for (const m of data) if (!byId.has(m.id)) byId.set(m.id, m);
+      return Array.from(byId.values()).sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+    });
+  }
+
+  async function loadOlder() {
+    const el = containerRef.current;
+    const current = messagesRef.current;
+    const oldest = current[0]?.created_at;
+    if (!oldest || loadingOlder || !hasMoreOlder) return;
+    setLoadingOlder(true);
+    try {
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("connection_id", connection.id)
+        .lt("created_at", oldest)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (!data || data.length === 0) {
+        setHasMoreOlder(false);
+        return;
+      }
+      if (data.length < PAGE_SIZE) setHasMoreOlder(false);
+      const older = [...data].reverse();
+      // Snapshot scroll height BEFORE React re-renders so useLayoutEffect
+      // can restore the visual position after the prepend.
+      if (el) pendingPrependRef.current = { prevScrollHeight: el.scrollHeight };
+      setMessages((prev) => {
+        const byId = new Map<string, Message>();
+        for (const m of older) byId.set(m.id, m);
+        for (const m of prev) if (!byId.has(m.id)) byId.set(m.id, m);
+        return Array.from(byId.values()).sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -255,7 +350,13 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-4">
+      <div ref={containerRef} className="flex-1 overflow-y-auto py-4">
+        {loadingOlder && (
+          <div className="text-center text-muted text-xs py-2">Loading older messages…</div>
+        )}
+        {!hasMoreOlder && messages.length >= PAGE_SIZE && (
+          <div className="text-center text-muted text-xs py-2">Beginning of conversation</div>
+        )}
         {messages.length === 0 ? (
           <div className="text-center text-muted text-sm py-8">
             No messages yet. Messages from {connection.platform} will appear here.
