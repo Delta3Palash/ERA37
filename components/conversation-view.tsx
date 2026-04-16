@@ -144,9 +144,27 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
       .select("*")
       .eq("connection_id", connection.id)
       .order("created_at", { ascending: true });
-    if (data) setMessages((prev) => {
-      if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) return prev;
-      return data;
+    if (!data) return;
+    setMessages((prev) => {
+      // Fast-path: if the server returns the same last id and same length,
+      // nothing changed — skip the re-render.
+      if (
+        prev.length === data.length &&
+        prev[prev.length - 1]?.id === data[data.length - 1]?.id
+      ) {
+        return prev;
+      }
+      // Merge server rows with any local rows not yet visible to the poll
+      // (Realtime can deliver a row before PostgREST serves it under the
+      // user's JWT, and replacing state wholesale would wipe the flashed
+      // message). Messages are append-only here, so keeping local extras is
+      // safe — any real divergence resolves on the next poll.
+      const byId = new Map<string, Message>();
+      for (const m of data) byId.set(m.id, m);
+      for (const m of prev) if (!byId.has(m.id)) byId.set(m.id, m);
+      return Array.from(byId.values()).sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
     });
   }
 

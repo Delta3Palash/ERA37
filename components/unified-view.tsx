@@ -165,10 +165,25 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
       .in("connection_id", connIds)
       .neq("direction", "bridged")
       .order("created_at", { ascending: true });
-    if (data) setMessages((prev) => {
-      // Only update if there are new messages (avoids unnecessary re-renders)
-      if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) return prev;
-      return data;
+    if (!data) return;
+    setMessages((prev) => {
+      // Fast-path: identical head and tail → skip re-render.
+      if (
+        prev.length === data.length &&
+        prev[prev.length - 1]?.id === data[data.length - 1]?.id
+      ) {
+        return prev;
+      }
+      // Merge rather than replace: Realtime can deliver a row before the
+      // poll sees it under the user's JWT, so wholesale replacement would
+      // wipe the just-flashed message. Messages are append-only here, so
+      // keeping any local-only rows is safe.
+      const byId = new Map<string, Message>();
+      for (const m of data) byId.set(m.id, m);
+      for (const m of prev) if (!byId.has(m.id)) byId.set(m.id, m);
+      return Array.from(byId.values()).sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
     });
   }
 
