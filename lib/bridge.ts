@@ -88,7 +88,12 @@ export async function bridgeMessage(
           { imageUrl }
         );
 
-        await supabase.from("messages").insert({
+        // supabase-js `.insert()` resolves with `{ error }` rather than
+        // throwing, so destructure to surface DB errors. The message was
+        // already sent successfully to the destination platform above; we
+        // log and continue rather than throw, so one target's insert failure
+        // doesn't block the others.
+        const { error: insertError } = await supabase.from("messages").insert({
           connection_id: targetConn.id,
           platform: targetConn.platform,
           platform_message_id: result.platform_message_id,
@@ -105,6 +110,18 @@ export async function bridgeMessage(
             source_message_id: platformMessageId,
           },
         });
+        if (insertError) {
+          console.error("[messages.insert] bridged failed:", {
+            code: insertError.code,
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            connection_id: targetConn.id,
+            platform: targetConn.platform,
+            source_platform: sourceConnection.platform,
+            source_message_id: platformMessageId,
+          });
+        }
       } catch (err) {
         console.error(`Bridge to ${targetConn.platform} failed:`, err);
       }

@@ -88,7 +88,11 @@ export async function POST(req: NextRequest) {
       if (parent) replyToId = parent.id;
     }
 
-    await supabase.from("messages").insert({
+    // supabase-js `.insert()` resolves with `{ error }` rather than throwing,
+    // so we must destructure to surface DB errors. Log and continue — failing
+    // this request would trigger Telegram's retry loop and could duplicate
+    // bridged copies on the destination platform.
+    const { error: insertError } = await supabase.from("messages").insert({
       connection_id: connection.id,
       platform: "telegram",
       platform_message_id: String(msg.message_id),
@@ -100,6 +104,16 @@ export async function POST(req: NextRequest) {
       message_type: hasMedia ? "image" : "text",
       reply_to_message_id: replyToId,
     });
+    if (insertError) {
+      console.error("[messages.insert] telegram incoming failed:", {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        connection_id: connection.id,
+        platform_message_id: String(msg.message_id),
+      });
+    }
 
     // Bridge to other platforms (separate try-catch)
     try {

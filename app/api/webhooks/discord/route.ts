@@ -41,25 +41,34 @@ export async function POST(req: NextRequest) {
     if (parent) replyToId = parent.id;
   }
 
-  // Insert message first — skip if already written directly by the worker
+  // Insert message first — skip if already written directly by the worker.
+  // We log and continue on DB errors instead of returning 500, because the
+  // Discord worker retries on non-2xx and a retry after a successful bridge
+  // would duplicate the bridged copies. supabase-js `.insert()` resolves with
+  // `{ error }` rather than throwing, so we must destructure to surface it.
   if (!skipInsert) {
-    try {
-      await supabase.from("messages").insert({
+    const { error: insertError } = await supabase.from("messages").insert({
+      connection_id: connectionId,
+      platform: "discord",
+      platform_message_id: messageId,
+      platform_channel_id: channelId,
+      sender_name: senderName,
+      sender_avatar: senderAvatar,
+      content: content || null,
+      image_url: imageUrl || null,
+      direction: "incoming",
+      message_type: imageUrl ? "image" : "text",
+      reply_to_message_id: replyToId,
+    });
+    if (insertError) {
+      console.error("[messages.insert] discord incoming failed:", {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
         connection_id: connectionId,
-        platform: "discord",
         platform_message_id: messageId,
-        platform_channel_id: channelId,
-        sender_name: senderName,
-        sender_avatar: senderAvatar,
-        content: content || null,
-        image_url: imageUrl || null,
-        direction: "incoming",
-        message_type: imageUrl ? "image" : "text",
-        reply_to_message_id: replyToId,
       });
-    } catch (err: any) {
-      console.error("Discord message insert error:", err);
-      return NextResponse.json({ error: err.message }, { status: 500 });
     }
   }
 
