@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MessageBubble } from "./message-bubble";
 import { Send, Menu, Image, X, ImageIcon, Reply } from "lucide-react";
@@ -10,6 +10,8 @@ import { uploadImage } from "@/lib/upload";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
 import type { Connection, Message, Platform, Role } from "@/lib/types";
+
+const PAGE_SIZE = 200;
 
 interface UnifiedViewProps {
   connections: Connection[];
@@ -31,12 +33,22 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const pendingPrependRef = useRef<{ prevScrollHeight: number } | null>(null);
   const supabase = useMemo(() => createClient(), []);
   const { toggle } = useSidebar();
 
   const connectionIds = useMemo(() => connections.map((c) => c.id).join(","), [connections]);
+  const connIdArray = useMemo(() => connectionIds ? connectionIds.split(",") : [], [connectionIds]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   function handleImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -93,11 +105,14 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
     }
   }, []);
 
-  // Realtime subscriptions
+  // Realtime subscriptions — one channel per connection. Bridged rows are
+  // ignored so they don't double up the sender's own message in the unified
+  // feed.
   useEffect(() => {
-    loadMessages();
+    setMessages([]);
+    setHasMoreOlder(true);
+    loadInitial();
 
-    // Subscribe to all connections
     const channels = connections.map((conn) =>
       supabase
         .channel(`unified-${conn.id}`)
@@ -111,7 +126,6 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
           },
           (payload: any) => {
             const newMsg = payload.new as Message;
-            // Skip bridged messages in unified view
             if (newMsg.direction === "bridged") return;
             setMessages((prev) => {
               if (prev.some((m) => m.id === newMsg.id)) return prev;
@@ -129,62 +143,132 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
     };
   }, [connectionIds]);
 
-  // Fallback polling + visibility refetch (handles silent WebSocket drops)
+  // Delta poll: only fetch rows strictly newer than what we already have,
+  // so a poll running right after Realtime cannot replace-wipe the row.
   useEffect(() => {
-    function handleVisibility() {
-      if (document.visibilityState === "visible") {
-        loadMessages();
-      }
+    function tick() {
+      if (document.visibilityState === "visible") loadNewer();
     }
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    // Poll every 10s as a safety net for dropped Realtime connections
-    const poll = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadMessages();
-      }
-    }, 10000);
-
+    document.addEventListener("visibilitychange", tick);
+    const poll = setInterval(tick, 10000);
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", tick);
       clearInterval(poll);
     };
   }, [connectionIds]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Auto-scroll to bottom only when the user is already near it; preserve
+  // scroll position when loadOlder prepends a page.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (pendingPrependRef.current) {
+      el.scrollTop = el.scrollHeight - pendingPrependRef.current.prevScrollHeight;
+      pendingPrependRef.current = null;
+      return;
+    }
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 200) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
-  async function loadMessages() {
-    const connIds = connections.map((c) => c.id);
-    if (connIds.length === 0) return;
+  // Infinite scroll: load older when the user scrolls near the top.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function onScroll() {
+      if (!el) return;
+      if (el.scrollTop < 100 && hasMoreOlder && !loadingOlder) {
+        loadOlder();
+      }
+    }
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [hasMoreOlder, loadingOlder]);
 
+  async function loadInitial() {
+    if (connIdArray.length === 0) return;
     const { data } = await supabase
       .from("messages")
       .select("*")
-      .in("connection_id", connIds)
+      .in("connection_id", connIdArray)
       .neq("direction", "bridged")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
     if (!data) return;
+    if (data.length < PAGE_SIZE) setHasMoreOlder(false);
+    const ordered = [...data].reverse();
     setMessages((prev) => {
-      // Fast-path: identical head and tail → skip re-render.
-      if (
-        prev.length === data.length &&
-        prev[prev.length - 1]?.id === data[data.length - 1]?.id
-      ) {
-        return prev;
-      }
-      // Merge rather than replace: Realtime can deliver a row before the
-      // poll sees it under the user's JWT, so wholesale replacement would
-      // wipe the just-flashed message. Messages are append-only here, so
-      // keeping any local-only rows is safe.
+      if (prev.length === 0) return ordered;
       const byId = new Map<string, Message>();
-      for (const m of data) byId.set(m.id, m);
+      for (const m of ordered) byId.set(m.id, m);
       for (const m of prev) if (!byId.has(m.id)) byId.set(m.id, m);
       return Array.from(byId.values()).sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
     });
+  }
+
+  async function loadNewer() {
+    if (connIdArray.length === 0) return;
+    const current = messagesRef.current;
+    if (current.length === 0) return loadInitial();
+    const newest = current[current.length - 1]?.created_at;
+    if (!newest) return;
+    const { data } = await supabase
+      .from("messages")
+      .select("*")
+      .in("connection_id", connIdArray)
+      .neq("direction", "bridged")
+      .gt("created_at", newest)
+      .order("created_at", { ascending: true })
+      .limit(PAGE_SIZE);
+    if (!data || data.length === 0) return;
+    setMessages((prev) => {
+      const byId = new Map<string, Message>();
+      for (const m of prev) byId.set(m.id, m);
+      for (const m of data) if (!byId.has(m.id)) byId.set(m.id, m);
+      return Array.from(byId.values()).sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+    });
+  }
+
+  async function loadOlder() {
+    if (connIdArray.length === 0) return;
+    const el = containerRef.current;
+    const current = messagesRef.current;
+    const oldest = current[0]?.created_at;
+    if (!oldest || loadingOlder || !hasMoreOlder) return;
+    setLoadingOlder(true);
+    try {
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .in("connection_id", connIdArray)
+        .neq("direction", "bridged")
+        .lt("created_at", oldest)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (!data || data.length === 0) {
+        setHasMoreOlder(false);
+        return;
+      }
+      if (data.length < PAGE_SIZE) setHasMoreOlder(false);
+      const older = [...data].reverse();
+      if (el) pendingPrependRef.current = { prevScrollHeight: el.scrollHeight };
+      setMessages((prev) => {
+        const byId = new Map<string, Message>();
+        for (const m of older) byId.set(m.id, m);
+        for (const m of prev) if (!byId.has(m.id)) byId.set(m.id, m);
+        return Array.from(byId.values()).sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+      });
+    } finally {
+      setLoadingOlder(false);
+    }
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -281,6 +365,7 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
     return true;
   });
 
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -307,7 +392,13 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-4">
+      <div ref={containerRef} className="flex-1 overflow-y-auto py-4">
+        {loadingOlder && (
+          <div className="text-center text-muted text-xs py-2">Loading older messages…</div>
+        )}
+        {!hasMoreOlder && messages.length >= PAGE_SIZE && (
+          <div className="text-center text-muted text-xs py-2">Beginning of history</div>
+        )}
         {visibleMessages.length === 0 ? (
           <div className="text-center text-muted text-sm py-8">
             No messages yet across any platform.
