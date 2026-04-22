@@ -44,32 +44,69 @@ export function GameWeekGrid({ canManage }: Props) {
     load();
   }, [load]);
 
-  async function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    setError(null);
-    const week = mondayOf(new Date());
-    try {
-      for (const file of Array.from(files)) {
-        if (!file.type.startsWith("image/")) continue;
-        const url = await uploadCalendarScreenshot(file, week);
-        const res = await fetch("/api/calendar/game", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ week_start: week, image_url: url }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Upload failed (${res.status})`);
+  const handleFiles = useCallback(
+    async (incoming: Iterable<File> | null | undefined) => {
+      if (!incoming) return;
+      const images = Array.from(incoming).filter((f) => f.type.startsWith("image/"));
+      if (images.length === 0) return;
+      setUploading(true);
+      setError(null);
+      const week = mondayOf(new Date());
+      try {
+        for (const file of images) {
+          const url = await uploadCalendarScreenshot(file, week);
+          const res = await fetch("/api/calendar/game", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ week_start: week, image_url: url }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Upload failed (${res.status})`);
+          }
+        }
+        await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Upload failed");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [load]
+  );
+
+  // Paste-to-upload: while the game tab is open (and the viewer is an admin),
+  // Ctrl/Cmd-V from any non-input focus uploads the clipboard image(s) to the
+  // current week. Mirrors the paste flow already in components/conversation-view.
+  useEffect(() => {
+    if (!canManage) return;
+    function onPaste(e: ClipboardEvent) {
+      // If the user is in a text input / editor, let the paste target win.
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith("image/")) {
+          const f = item.getAsFile();
+          if (f) files.push(f);
         }
       }
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploading(false);
+      if (files.length === 0) return;
+      e.preventDefault();
+      handleFiles(files);
     }
-  }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [canManage, handleFiles]);
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this screenshot?")) return;
@@ -112,7 +149,7 @@ export function GameWeekGrid({ canManage }: Props) {
         >
           <Upload className="w-5 h-5 text-muted" />
           <div className="text-sm font-medium">
-            {uploading ? "Uploading…" : "Drop screenshots for this week"}
+            {uploading ? "Uploading…" : "Drop, paste (Ctrl/Cmd + V), or click to upload"}
           </div>
           <div className="text-xs text-muted">
             Current week: {mondayOf(new Date())}
