@@ -33,7 +33,7 @@ export function GameWeekGrid({ canManage, collapsible = false }: Props) {
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [extractImageUrl, setExtractImageUrl] = useState<string | null>(null);
+  const [extractTarget, setExtractTarget] = useState<{ url: string; week: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -213,7 +213,9 @@ export function GameWeekGrid({ canManage, collapsible = false }: Props) {
                 {canManage && (
                   <div className="absolute top-2 right-2 flex items-center gap-1.5">
                     <button
-                      onClick={() => setExtractImageUrl(img.image_url)}
+                      onClick={() =>
+                        setExtractTarget({ url: img.image_url, week: img.week_start })
+                      }
                       className="px-2 py-1 rounded-full bg-black/70 text-white text-xs font-medium hover:bg-accent hover:text-black transition-colors inline-flex items-center gap-1"
                       aria-label="Extract events from screenshot"
                       title="Extract events with AI"
@@ -236,12 +238,13 @@ export function GameWeekGrid({ canManage, collapsible = false }: Props) {
         </div>
       ))}
 
-      {extractImageUrl && (
+      {extractTarget && (
         <ExtractReviewModal
-          imageUrl={extractImageUrl}
-          onCancel={() => setExtractImageUrl(null)}
+          imageUrl={extractTarget.url}
+          weekStart={extractTarget.week}
+          onCancel={() => setExtractTarget(null)}
           onCreated={() => {
-            setExtractImageUrl(null);
+            setExtractTarget(null);
             // New events went straight to the DB via /api/calendar/events.
             // Reload so the sibling EventWeekView (kind='game') picks them
             // up immediately — lifting state between the sibling and this

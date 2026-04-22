@@ -55,3 +55,20 @@ export function formatInTimezone(
 export function formatTimeInTimezone(value: string | Date, tz: string): string {
   return formatInTimezone(value, tz, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
+
+/**
+ * Take a `<input type="datetime-local">` value (YYYY-MM-DDTHH:mm, in the
+ * browser's local zone) and return "UTC YYYY-MM-DD HH:mm" for display.
+ * Game events in AoE Mobile are UTC-scheduled so showing the UTC equivalent
+ * next to the local input lets users sanity-check without a mental conversion.
+ * Returns an empty string for invalid / empty inputs.
+ */
+export function utcPreview(localInput: string): string {
+  if (!localInput) return "";
+  const d = new Date(localInput);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `UTC ${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(
+    d.getUTCDate()
+  )} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
