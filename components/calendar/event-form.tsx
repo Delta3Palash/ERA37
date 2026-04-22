@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import type { CalendarEvent, CalendarEventType, CalendarKind } from "@/lib/types";
 import { AssigneePicker } from "./assignee-picker";
 import { utcPreview } from "./use-user-timezone";
@@ -11,6 +11,13 @@ interface Props {
   initial?: CalendarEvent | null;
   onSave: (saved: CalendarEvent) => void;
   onCancel: () => void;
+  /** When true (and `initial` is set), a red trash button appears in the
+   *  footer. Parent controls the policy — typically is_admin OR
+   *  created_by === currentUserId. */
+  canDelete?: boolean;
+  /** Called after a successful DELETE so the parent can remove the row
+   *  from its own state. Modal closes via onCancel. */
+  onDelete?: (id: string) => void;
 }
 
 const TYPES: { value: CalendarEventType; label: string }[] = [
@@ -29,7 +36,7 @@ const TYPES: { value: CalendarEventType; label: string }[] = [
  * to ISO UTC on submit. We intentionally don't make the user specify a
  * timezone in the form — the viewer's preferred zone handles display.
  */
-export function EventForm({ kind, initial, onSave, onCancel }: Props) {
+export function EventForm({ kind, initial, onSave, onCancel, canDelete, onDelete }: Props) {
   const [eventType, setEventType] = useState<CalendarEventType>(
     initial?.event_type || "growth"
   );
@@ -44,6 +51,7 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
   );
   const [assignedTo, setAssignedTo] = useState<string | null>(initial?.assigned_to || null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -79,6 +87,27 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
       onSave(saved);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!initial || !onDelete) return;
+    const what = kind === "misc" ? "task" : "event";
+    if (!confirm(`Delete this ${what}? This can't be undone.`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/calendar/events/${initial.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error || `Delete failed (${res.status})`);
+        return;
+      }
+      onDelete(initial.id);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -179,17 +208,34 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex items-center gap-2 pt-2">
+            {/* Delete button sits on the LEFT to visually separate destructive
+                action from the primary Save on the right. Only rendered when
+                editing an existing event AND the caller says the viewer can
+                delete (typically is_admin, or creator of alliance/game). */}
+            {initial && canDelete && onDelete && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={saving || deleting}
+                className="px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            )}
+            <div className="flex-1" />
             <button
               type="button"
               onClick={onCancel}
-              className="px-3 py-2 rounded-lg text-sm text-muted hover:bg-surface-hover"
+              disabled={deleting}
+              className="px-3 py-2 rounded-lg text-sm text-muted hover:bg-surface-hover disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={saving || !title.trim() || !startsLocal}
+              disabled={saving || deleting || !title.trim() || !startsLocal}
               className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
             >
               {saving ? "Saving…" : initial ? "Update" : "Create"}

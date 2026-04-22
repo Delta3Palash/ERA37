@@ -290,6 +290,11 @@ export function EventWeekView({ kind, canWrite, currentUserId, isAdmin, footer }
             setEvents((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
             setEditing(null);
           }}
+          canDelete={canEdit(editing)}
+          onDelete={(id) => {
+            setEvents((prev) => prev.filter((e) => e.id !== id));
+            setEditing(null);
+          }}
         />
       )}
     </div>
