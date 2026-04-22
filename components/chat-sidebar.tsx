@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Lock,
   Shield,
+  Calendar,
 } from "lucide-react";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
@@ -162,6 +163,21 @@ export function ChatSidebar({ userId, profile, groups, isAdmin, canOpenAdmin }: 
               </div>
             </button>
           )}
+
+          <button
+            onClick={() => navigate("/calendar/game")}
+            className={`w-full text-left p-3 flex items-center gap-3 hover:bg-surface-hover transition-colors ${
+              pathname.startsWith("/calendar")
+                ? "bg-surface-hover border-l-2 border-accent"
+                : "border-l-2 border-transparent"
+            }`}
+          >
+            <Calendar className="w-5 h-5 text-accent" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-semibold truncate block">Calendar</span>
+              <span className="text-xs text-muted">Game + alliance events</span>
+            </div>
+          </button>
 
           {groups.length === 0 ? (
             <div className="p-4 text-center text-muted text-sm">

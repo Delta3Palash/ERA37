@@ -40,6 +40,7 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<Message[]>([]);
   const pendingPrependRef = useRef<{ prevScrollHeight: number } | null>(null);
+  const pendingInitialScrollRef = useRef(false);
   const supabase = useMemo(() => createClient(), []);
   const { toggle } = useSidebar();
 
@@ -111,6 +112,7 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
   useEffect(() => {
     setMessages([]);
     setHasMoreOlder(true);
+    pendingInitialScrollRef.current = true;
     loadInitial();
 
     const channels = connections.map((conn) =>
@@ -162,6 +164,12 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    if (pendingInitialScrollRef.current && messages.length > 0) {
+      // Fresh mount / connection change — snap to the newest message.
+      el.scrollTop = el.scrollHeight;
+      pendingInitialScrollRef.current = false;
+      return;
+    }
     if (pendingPrependRef.current) {
       el.scrollTop = el.scrollHeight - pendingPrependRef.current.prevScrollHeight;
       pendingPrependRef.current = null;
@@ -368,8 +376,8 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
+      {/* Header — sticky on mobile so the hamburger menu stays reachable. */}
+      <div className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
         <button
           onClick={toggle}
           className="md:hidden p-1 rounded hover:bg-surface-hover text-muted"
@@ -433,8 +441,9 @@ export function UnifiedView({ connections, roleMap, userId, userName, preferredL
       </div>
 
       {/* Input with platform selector */}
+      {/* Input — sticky bottom so the send box stays reachable on mobile. */}
       <div
-        className={`relative border-t bg-surface transition-colors ${dragging ? "border-accent bg-accent/5" : "border-border"}`}
+        className={`sticky bottom-0 z-20 border-t bg-surface transition-colors ${dragging ? "border-accent bg-accent/5" : "border-border"}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {

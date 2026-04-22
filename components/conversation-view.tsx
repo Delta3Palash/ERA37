@@ -38,6 +38,7 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<Message[]>([]);
   const pendingPrependRef = useRef<{ prevScrollHeight: number } | null>(null);
+  const pendingInitialScrollRef = useRef(false);
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const { toggle } = useSidebar();
@@ -101,9 +102,13 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
   }, []);
 
   useEffect(() => {
-    // Reset pagination state when the connection changes.
+    // Reset pagination state when the connection changes. The initial-scroll
+    // flag guarantees the next useLayoutEffect snaps to the newest message
+    // regardless of current scroll position (on fresh mount scrollTop === 0
+    // and the distance-from-bottom heuristic wouldn't fire on its own).
     setMessages([]);
     setHasMoreOlder(true);
+    pendingInitialScrollRef.current = true;
     loadInitial();
 
     const channel = supabase
@@ -151,6 +156,14 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    if (pendingInitialScrollRef.current && messages.length > 0) {
+      // First paint after a connection switch or fresh mount — snap to the
+      // bottom (no smooth: there's nothing to animate from) so the user
+      // lands on the newest message.
+      el.scrollTop = el.scrollHeight;
+      pendingInitialScrollRef.current = false;
+      return;
+    }
     if (pendingPrependRef.current) {
       // Keep the user anchored on the row they were reading when the
       // older page was prepended.
@@ -330,8 +343,10 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
+      {/* Header — sticky on mobile so the hamburger menu stays reachable even
+          when the outer page scrolls (the flex-1 messages container handles
+          its own overflow on desktop, so sticky is a no-op there). */}
+      <div className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b border-border bg-surface">
         <button
           onClick={toggle}
           className="md:hidden p-1 rounded hover:bg-surface-hover text-muted"
@@ -390,9 +405,9 @@ export function ConversationView({ connection, roleMap, userId, userName, prefer
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* Input — sticky bottom so the send box stays reachable on mobile. */}
       <div
-        className={`relative border-t bg-surface transition-colors ${dragging ? "border-accent bg-accent/5" : "border-border"}`}
+        className={`sticky bottom-0 z-20 border-t bg-surface transition-colors ${dragging ? "border-accent bg-accent/5" : "border-border"}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
