@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import type { CalendarEvent, CalendarEventType, CalendarKind } from "@/lib/types";
 import { AssigneePicker } from "./assignee-picker";
 import { utcPreview } from "./use-user-timezone";
@@ -11,6 +11,13 @@ interface Props {
   initial?: CalendarEvent | null;
   onSave: (saved: CalendarEvent) => void;
   onCancel: () => void;
+  /**
+   * Optional delete handler. When provided on an edit (initial != null),
+   * the form shows a trash button next to Cancel/Update. Omitted for
+   * create-new and for viewers who lack delete permission — the parent
+   * decides that before passing the prop.
+   */
+  onDelete?: (id: string) => Promise<void> | void;
 }
 
 const TYPES: { value: CalendarEventType; label: string }[] = [
@@ -29,7 +36,7 @@ const TYPES: { value: CalendarEventType; label: string }[] = [
  * to ISO UTC on submit. We intentionally don't make the user specify a
  * timezone in the form — the viewer's preferred zone handles display.
  */
-export function EventForm({ kind, initial, onSave, onCancel }: Props) {
+export function EventForm({ kind, initial, onSave, onCancel, onDelete }: Props) {
   const [eventType, setEventType] = useState<CalendarEventType>(
     initial?.event_type || "growth"
   );
@@ -44,6 +51,7 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
   );
   const [assignedTo, setAssignedTo] = useState<string | null>(initial?.assigned_to || null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -179,21 +187,44 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-3 py-2 rounded-lg text-sm text-muted hover:bg-surface-hover"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !title.trim() || !startsLocal}
-              className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
-            >
-              {saving ? "Saving…" : initial ? "Update" : "Create"}
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {initial && onDelete ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm(`Delete "${initial.title}"?`)) return;
+                  setDeleting(true);
+                  try {
+                    await onDelete(initial.id);
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting || saving}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-3 py-2 rounded-lg text-sm text-muted hover:bg-surface-hover"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={saving || deleting || !title.trim() || !startsLocal}
+                className="px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:bg-accent-hover disabled:opacity-50"
+              >
+                {saving ? "Saving…" : initial ? "Update" : "Create"}
+              </button>
+            </div>
           </div>
         </form>
       </div>
