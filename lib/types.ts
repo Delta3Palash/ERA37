@@ -68,7 +68,7 @@ export interface Connection {
 
 // Calendar types -------------------------------------------------------------
 
-export type CalendarKind = "alliance" | "misc";
+export type CalendarKind = "alliance" | "misc" | "game";
 export type CalendarEventType = "growth" | "attack" | "defense" | "rally";
 
 export interface CalendarEvent {
