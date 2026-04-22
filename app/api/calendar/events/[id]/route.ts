@@ -12,12 +12,13 @@ const VALID_TYPES: CalendarEventType[] = ["growth", "attack", "defense", "rally"
  * Rules:
  *  - Misc events: only is_admin (R5) can edit or delete, regardless of who
  *    created the event.
- *  - Alliance events: superadmins can edit or delete any event; delegated
- *    managers (can_manage) can only touch events they created themselves.
+ *  - Alliance + Game events: superadmins can edit or delete any event;
+ *    delegated managers (can_manage) can only touch events they created
+ *    themselves.
  */
 type GateOk = {
   svc: SupabaseClient;
-  existing: { id: string; kind: "alliance" | "misc"; created_by: string | null };
+  existing: { id: string; kind: "alliance" | "misc" | "game"; created_by: string | null };
 };
 type GateErr = { error: NextResponse };
 
@@ -44,7 +45,11 @@ async function loadAndAuthorize(
       ),
     };
   }
-  if (existing.kind === "alliance" && !auth.ctx.isAdmin && existing.created_by !== auth.ctx.userId) {
+  if (
+    (existing.kind === "alliance" || existing.kind === "game") &&
+    !auth.ctx.isAdmin &&
+    existing.created_by !== auth.ctx.userId
+  ) {
     return {
       error: NextResponse.json(
         { error: "You can only modify events you created" },

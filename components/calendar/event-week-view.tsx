@@ -13,6 +13,12 @@ interface Props {
   canWrite: boolean;
   currentUserId: string;
   isAdmin: boolean;
+  /**
+   * Optional node rendered below the day grid, inside the same scroll
+   * container. Used on the Game tab to host the collapsible reference
+   * screenshots without setting up a competing scroll area.
+   */
+  footer?: React.ReactNode;
 }
 
 /**
@@ -22,7 +28,7 @@ interface Props {
  * at-a-time (no month view — the alliance only cares about the current week
  * in practice).
  */
-export function EventWeekView({ kind, canWrite, currentUserId, isAdmin }: Props) {
+export function EventWeekView({ kind, canWrite, currentUserId, isAdmin, footer }: Props) {
   const tz = useUserTimezone();
   const [weekStart, setWeekStart] = useState<Date>(() => toMondayUTC(new Date()));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -211,6 +217,8 @@ export function EventWeekView({ kind, canWrite, currentUserId, isAdmin }: Props)
           );
         })}
       </div>
+
+      {footer && <div className="px-4 pb-6">{footer}</div>}
 
       {creating && (
         <EventForm

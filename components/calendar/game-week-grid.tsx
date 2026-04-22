@@ -8,6 +8,13 @@ import { mondayOf, uploadCalendarScreenshot } from "@/lib/calendar-upload";
 interface Props {
   /** True when the viewer is is_admin — enables upload + delete. */
   canManage: boolean;
+  /**
+   * When true, the grid renders inline (no self-scroll) wrapped in a native
+   * <details> disclosure so it can sit at the bottom of a larger scroll
+   * container (the Game tab, where structured events own the main view).
+   * When false/omitted (legacy usage), the grid owns a full-height pane.
+   */
+  collapsible?: boolean;
 }
 
 /**
@@ -19,7 +26,7 @@ interface Props {
  * then we POST the resulting public URL to `/api/calendar/game` which
  * inserts the discoverable row.
  */
-export function GameWeekGrid({ canManage }: Props) {
+export function GameWeekGrid({ canManage, collapsible = false }: Props) {
   const [images, setImages] = useState<GameCalendarImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -126,8 +133,10 @@ export function GameWeekGrid({ canManage }: Props) {
   }
   const weekKeys = Array.from(byWeek.keys()).sort((a, b) => (a < b ? 1 : -1));
 
-  return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+  const rootClass = collapsible ? "space-y-6" : "flex-1 overflow-y-auto px-4 py-4 space-y-6";
+
+  const body = (
+    <div className={rootClass}>
       {canManage && (
         <div
           onDragOver={(e) => {
@@ -214,5 +223,18 @@ export function GameWeekGrid({ canManage }: Props) {
         </div>
       ))}
     </div>
+  );
+
+  if (!collapsible) return body;
+
+  return (
+    <details className="rounded-lg border border-border bg-surface/60 group">
+      <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium flex items-center justify-between">
+        <span>Reference screenshots</span>
+        <span className="text-xs text-muted group-open:hidden">Show</span>
+        <span className="text-xs text-muted hidden group-open:inline">Hide</span>
+      </summary>
+      <div className="px-3 pb-4 pt-2">{body}</div>
+    </details>
   );
 }

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { CalendarEventType, CalendarKind } from "@/lib/types";
 
 const VALID_TYPES: CalendarEventType[] = ["growth", "attack", "defense", "rally"];
-const VALID_KINDS: CalendarKind[] = ["alliance", "misc"];
+const VALID_KINDS: CalendarKind[] = ["alliance", "misc", "game"];
 
 // -----------------------------------------------------------------------------
 // GET /api/calendar/events?kind=alliance&from=ISO&to=ISO

@@ -304,3 +304,16 @@ CREATE POLICY "Auth upload calendar screenshots" ON storage.objects
 DROP POLICY IF EXISTS "Public read calendar screenshots" ON storage.objects;
 CREATE POLICY "Public read calendar screenshots" ON storage.objects
   FOR SELECT USING (bucket_id = 'calendar-screenshots');
+
+-- =============================================================
+-- Phase 2.1: Game events become structured, assignable rows
+-- =============================================================
+-- Originally the Game tab was screenshot-only. Users needed to assign R4s
+-- to individual game events, which requires structured rows. Extend the
+-- kind enum to include 'game' — existing alliance/misc rows are
+-- unaffected. Screenshots are still uploaded for visual reference.
+
+ALTER TABLE calendar_events DROP CONSTRAINT IF EXISTS calendar_events_kind_check;
+ALTER TABLE calendar_events
+  ADD CONSTRAINT calendar_events_kind_check
+  CHECK (kind IN ('alliance', 'misc', 'game'));
