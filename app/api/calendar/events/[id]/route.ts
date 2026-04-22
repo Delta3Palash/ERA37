@@ -1,8 +1,9 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireManagerOrAdmin } from "@/lib/access";
+import { notifyAssignmentChange } from "@/lib/notifications";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import type { CalendarEventType } from "@/lib/types";
+import type { CalendarEvent, CalendarEventType } from "@/lib/types";
 
 const VALID_TYPES: CalendarEventType[] = ["growth", "attack", "defense", "rally"];
 
@@ -18,7 +19,12 @@ const VALID_TYPES: CalendarEventType[] = ["growth", "attack", "defense", "rally"
  */
 type GateOk = {
   svc: SupabaseClient;
-  existing: { id: string; kind: "alliance" | "misc" | "game"; created_by: string | null };
+  existing: {
+    id: string;
+    kind: "alliance" | "misc" | "game";
+    created_by: string | null;
+    assigned_to: string | null;
+  };
 };
 type GateErr = { error: NextResponse };
 
@@ -30,7 +36,7 @@ async function loadAndAuthorize(
   const svc = createServiceClient();
   const { data: existing, error } = await svc
     .from("calendar_events")
-    .select("id, kind, created_by")
+    .select("id, kind, created_by, assigned_to")
     .eq("id", id)
     .single();
   if (error || !existing) {
@@ -104,6 +110,22 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // If this PATCH changed the assignee, ping the new one (and the displaced
+  // one if there was a handoff). Only fires when assigned_to was part of
+  // the patch body — a title-only edit doesn't re-notify.
+  if ("assigned_to" in patch && auth.ctx) {
+    const newAssignee = (patch.assigned_to as string | null) ?? null;
+    await notifyAssignmentChange(gate.svc, {
+      // Supabase returns the embedded `assignee` as an array; the notifier
+      // only reads id/title/kind/starts_at so the shape mismatch is safe.
+      event: data as unknown as CalendarEvent,
+      oldAssigneeId: gate.existing.assigned_to,
+      newAssigneeId: newAssignee,
+      actorId: auth.ctx.userId,
+    });
+  }
+
   return NextResponse.json(data);
 }
 

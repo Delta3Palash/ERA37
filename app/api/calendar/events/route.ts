@@ -1,7 +1,8 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireManagerOrAdmin } from "@/lib/access";
+import { notifyAssignmentChange } from "@/lib/notifications";
 import { NextRequest, NextResponse } from "next/server";
-import type { CalendarEventType, CalendarKind } from "@/lib/types";
+import type { CalendarEvent, CalendarEventType, CalendarKind } from "@/lib/types";
 
 const VALID_TYPES: CalendarEventType[] = ["growth", "attack", "defense", "rally"];
 const VALID_KINDS: CalendarKind[] = ["alliance", "misc", "game"];
@@ -97,5 +98,17 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Fire notification for the freshly-assigned R4, if any. Never blocks
+  // the response; the helper logs and swallows its own errors.
+  await notifyAssignmentChange(svc, {
+    // Supabase returns the embedded `assignee` as an array; the notifier
+    // only reads id/title/kind/starts_at so the shape mismatch is safe.
+    event: data as unknown as CalendarEvent,
+    oldAssigneeId: null,
+    newAssigneeId: assigned_to,
+    actorId: auth.ctx.userId,
+  });
+
   return NextResponse.json(data);
 }
