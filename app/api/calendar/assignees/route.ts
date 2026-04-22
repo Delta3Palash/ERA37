@@ -3,10 +3,15 @@ import { NextResponse } from "next/server";
 
 /**
  * Returns the list of profiles eligible to be "R4 in charge" of a calendar
- * event — anyone with `is_admin = true` OR any role with `can_manage = true`.
- * Used by the calendar UI's assignee picker.
+ * event — any profile holding at least one role flagged `can_manage = true`.
  *
- * Any authenticated user can query this; the result is just display names.
+ * Implementation is intentionally a 3-step lookup rather than a nested
+ * PostgREST embed. The previous embed `roles!inner(can_manage)` with
+ * `.eq("roles.can_manage", true)` was silently returning zero rows on
+ * Supabase — the embedded-filter path is finicky when the join goes through
+ * a composite-key link table like profile_roles.
+ *
+ * Any authenticated user can call this; the response is just display names.
  */
 export async function GET() {
   const supabase = await createClient();
@@ -17,35 +22,36 @@ export async function GET() {
 
   const svc = createServiceClient();
 
-  // Superadmins
-  const { data: admins, error: adminErr } = await svc
-    .from("profiles")
-    .select("id, display_name, avatar_url, is_admin")
-    .eq("is_admin", true);
-  if (adminErr) return NextResponse.json({ error: adminErr.message }, { status: 500 });
+  // 1. Roles with can_manage=true
+  const { data: mgrRoles, error: rolesErr } = await svc
+    .from("roles")
+    .select("id")
+    .eq("can_manage", true);
+  if (rolesErr) return NextResponse.json({ error: rolesErr.message }, { status: 500 });
+  const roleIds = (mgrRoles || []).map((r: { id: string }) => r.id);
+  if (roleIds.length === 0) return NextResponse.json([]);
 
-  // Anyone holding a can_manage role — resolved via profile_roles join
-  const { data: managerRows, error: mgrErr } = await svc
+  // 2. Profiles holding any of those roles (dedupe)
+  const { data: assignments, error: assignErr } = await svc
     .from("profile_roles")
-    .select("profile_id, roles!inner(can_manage), profiles!inner(id, display_name, avatar_url)")
-    .eq("roles.can_manage", true);
-  if (mgrErr) return NextResponse.json({ error: mgrErr.message }, { status: 500 });
+    .select("profile_id")
+    .in("role_id", roleIds);
+  if (assignErr) return NextResponse.json({ error: assignErr.message }, { status: 500 });
+  const profileIds = Array.from(
+    new Set((assignments || []).map((a: { profile_id: string }) => a.profile_id))
+  );
+  if (profileIds.length === 0) return NextResponse.json([]);
 
-  // Dedupe by profile id — a superadmin might also hold a can_manage role
-  const byId = new Map<string, { id: string; display_name: string | null; avatar_url: string | null }>();
-  for (const p of admins || []) {
-    byId.set(p.id, { id: p.id, display_name: p.display_name, avatar_url: p.avatar_url });
-  }
-  for (const row of (managerRows || []) as any[]) {
-    const p = row.profiles;
-    if (!p) continue;
-    if (!byId.has(p.id)) {
-      byId.set(p.id, { id: p.id, display_name: p.display_name, avatar_url: p.avatar_url });
-    }
-  }
+  // 3. Profile display data
+  const { data: profiles, error: profErr } = await svc
+    .from("profiles")
+    .select("id, display_name, avatar_url")
+    .in("id", profileIds);
+  if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
 
-  const assignees = Array.from(byId.values()).sort((a, b) =>
+  type P = { id: string; display_name: string | null; avatar_url: string | null };
+  const sorted = ((profiles || []) as P[]).sort((a, b) =>
     (a.display_name || "").localeCompare(b.display_name || "")
   );
-  return NextResponse.json(assignees);
+  return NextResponse.json(sorted);
 }

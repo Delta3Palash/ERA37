@@ -18,15 +18,15 @@ export function ChatLayoutWrapper({ children }: { children: React.ReactNode }) {
   return (
     <SidebarContext.Provider value={{ open, toggle: () => setOpen(!open), close: () => setOpen(false) }}>
       {/*
-        h-dvh (dynamic viewport height) is the fix for iOS Safari: when the
-        address bar is visible, 100vh is taller than the visible area and the
-        browser scrolls the whole page to reveal more, dragging the chat
-        header off-screen. h-dvh locks the shell to exactly what's visible so
-        the inner overflow-y-auto owns all scrolling and `sticky top-0` on
-        the header actually pins. We keep h-screen as a fallback for browsers
-        that don't support dvh yet.
+        Lock the chat shell to the viewport edges. Root layout has
+        `body.min-h-full flex flex-col` which lets body grow past the
+        viewport on some mobile layouts — when that happens the whole page
+        scrolls and drags the chat header offscreen, even with h-dvh +
+        sticky. Going `fixed inset-0` here takes the shell out of body
+        flow entirely so no amount of body growth can push it around.
+        h-dvh is retained as a hint for browsers that need it.
       */}
-      <div className="flex h-screen h-dvh overflow-hidden">
+      <div className="fixed inset-0 flex h-screen h-dvh overflow-hidden">
         {children}
       </div>
     </SidebarContext.Provider>
