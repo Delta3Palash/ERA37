@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload, Trash2 } from "lucide-react";
+import { Upload, Trash2, Sparkles } from "lucide-react";
 import type { GameCalendarImage } from "@/lib/types";
 import { mondayOf, uploadCalendarScreenshot } from "@/lib/calendar-upload";
+import { ExtractReviewModal } from "./extract-review-modal";
 
 interface Props {
   /** True when the viewer is is_admin — enables upload + delete. */
@@ -32,6 +33,7 @@ export function GameWeekGrid({ canManage, collapsible = false }: Props) {
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [extractImageUrl, setExtractImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -209,19 +211,46 @@ export function GameWeekGrid({ canManage, collapsible = false }: Props) {
                   className="w-full h-auto block"
                 />
                 {canManage && (
-                  <button
-                    onClick={() => handleDelete(img.id)}
-                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-red-600 transition-colors"
-                    aria-label="Delete screenshot"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                    <button
+                      onClick={() => setExtractImageUrl(img.image_url)}
+                      className="px-2 py-1 rounded-full bg-black/70 text-white text-xs font-medium hover:bg-accent hover:text-black transition-colors inline-flex items-center gap-1"
+                      aria-label="Extract events from screenshot"
+                      title="Extract events with AI"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Extract
+                    </button>
+                    <button
+                      onClick={() => handleDelete(img.id)}
+                      className="p-1.5 rounded-full bg-black/70 text-white hover:bg-red-600 transition-colors"
+                      aria-label="Delete screenshot"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
           </div>
         </div>
       ))}
+
+      {extractImageUrl && (
+        <ExtractReviewModal
+          imageUrl={extractImageUrl}
+          onCancel={() => setExtractImageUrl(null)}
+          onCreated={() => {
+            setExtractImageUrl(null);
+            // New events went straight to the DB via /api/calendar/events.
+            // Reload so the sibling EventWeekView (kind='game') picks them
+            // up immediately — lifting state between the sibling and this
+            // component would be a much larger refactor for a one-off
+            // bulk-insert flow.
+            if (typeof window !== "undefined") window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 
