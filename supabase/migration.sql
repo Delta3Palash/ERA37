@@ -369,3 +369,57 @@ INSERT INTO team_clock_timezones (iana, label, sort_order) VALUES
   ('Asia/Seoul',         'Seoul',         90),
   ('Australia/Sydney',   'Sydney',       100)
 ON CONFLICT (iana) DO NOTHING;
+
+-- =============================================================
+-- Phase 2.3: In-app notifications for calendar event assignments
+-- =============================================================
+-- Triggered by the POST/PATCH routes on calendar_events. When an R4 is
+-- assigned to an event (or reassigned / unassigned), we insert a row here
+-- for the affected profile(s). The UI's notification bell subscribes via
+-- Realtime so the alert appears immediately without a page refresh.
+--
+-- Rows auto-cascade on profile or event deletion.
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('event_assigned', 'event_unassigned')),
+  event_id UUID REFERENCES calendar_events(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  body TEXT,
+  -- Where clicking the notification should land the user. Kept denormalised
+  -- so deleting an event doesn't break the link for historical entries.
+  link_href TEXT,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Unread-first index: most queries are "latest 20 for me, unread at top".
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread
+  ON notifications(recipient_id, read_at NULLS FIRST, created_at DESC);
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Users see only their own notifications. Writes happen via the service
+-- client inside API routes, so no public INSERT policy is needed. The
+-- UPDATE policy covers "mark as read".
+DROP POLICY IF EXISTS "Users see own notifications" ON notifications;
+CREATE POLICY "Users see own notifications" ON notifications
+  FOR SELECT USING (recipient_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users update own notifications" ON notifications;
+CREATE POLICY "Users update own notifications" ON notifications
+  FOR UPDATE USING (recipient_id = auth.uid());
+
+-- Realtime: broadcast INSERTs so the bell can refresh without polling.
+-- Safe to re-run — supabase_realtime is an append-only publication; adding
+-- the same table twice no-ops.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'notifications'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+  END IF;
+END $$;

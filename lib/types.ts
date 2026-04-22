@@ -119,6 +119,20 @@ export interface GameCalendarImage {
   uploaded_at: string;
 }
 
+export type NotificationKind = "event_assigned" | "event_unassigned";
+
+export interface Notification {
+  id: string;
+  recipient_id: string;
+  kind: NotificationKind;
+  event_id: string | null;
+  title: string;
+  body: string | null;
+  link_href: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 export interface Message {
   id: string;
   connection_id: string;

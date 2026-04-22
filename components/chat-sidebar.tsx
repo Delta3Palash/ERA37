@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { TelegramIcon, DiscordIcon, SlackIcon, WhatsAppIcon } from "./platform-icons";
 import { useSidebar } from "./chat-layout-wrapper";
+import { NotificationBell } from "./notification-bell";
 import type { ChannelGroup, Connection, Profile, Platform } from "@/lib/types";
 
 interface ChatSidebarProps {
@@ -121,28 +122,29 @@ export function ChatSidebar({ userId, profile, groups, isAdmin, canOpenAdmin }: 
           <h1 className="text-lg font-bold">
             ERA<span className="text-accent">37</span>
           </h1>
-          {(canOpenAdmin || isAdmin) && (
-            <div className="flex items-center gap-1">
-              {canOpenAdmin && (
-                <button
-                  onClick={() => navigate("/admin/roles")}
-                  className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
-                  title="Admin"
-                >
-                  <Shield className="w-4 h-4" />
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  onClick={() => navigate("/settings")}
-                  className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
-                  title="Channel settings"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-1">
+            {/* Bell is visible to everyone — any user can be an event
+                assignee and should be able to see their alerts. */}
+            <NotificationBell userId={userId} />
+            {canOpenAdmin && (
+              <button
+                onClick={() => navigate("/admin/roles")}
+                className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
+                title="Admin"
+              >
+                <Shield className="w-4 h-4" />
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => navigate("/settings")}
+                className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-muted hover:text-foreground"
+                title="Channel settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Channel list */}
