@@ -238,3 +238,69 @@ CREATE POLICY "Admins manage channel_group_connections" ON channel_group_connect
 -- still require is_admin because they're used for service-client writes).
 
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS can_manage BOOLEAN NOT NULL DEFAULT false;
+
+-- =============================================================
+-- Phase 2: Calendar (Game + Alliance + Miscellaneous)
+-- =============================================================
+-- Three views behind a single /calendar route:
+--   - Game: admin uploads weekly screenshots of the in-game event calendar
+--   - Alliance: typed events (growth/attack/defense/rally) with an R4 owner
+--   - Misc: same shape as Alliance but created by R5s to assign ad-hoc tasks
+-- Writes are gated at the API layer via lib/access.ts — RLS here only
+-- guards reads and keeps service-client writes on the fast path.
+
+-- Per-user timezone for rendering event times
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_timezone TEXT DEFAULT 'UTC';
+
+-- Game calendar: one row per uploaded screenshot, grouped by week_start
+CREATE TABLE IF NOT EXISTS game_calendar_images (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  week_start DATE NOT NULL,
+  image_url TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  uploaded_by UUID REFERENCES profiles(id),
+  uploaded_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_game_cal_week ON game_calendar_images(week_start DESC);
+
+-- Alliance + misc events share a table, distinguished by `kind`
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind TEXT NOT NULL CHECK (kind IN ('alliance', 'misc')),
+  event_type TEXT NOT NULL CHECK (event_type IN ('growth', 'attack', 'defense', 'rally')),
+  title TEXT NOT NULL,
+  details TEXT,
+  starts_at TIMESTAMPTZ NOT NULL,
+  ends_at TIMESTAMPTZ,
+  assigned_to UUID REFERENCES profiles(id),
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cal_events_starts ON calendar_events(starts_at);
+CREATE INDEX IF NOT EXISTS idx_cal_events_kind_starts ON calendar_events(kind, starts_at);
+
+-- Storage bucket for game screenshots
+INSERT INTO storage.buckets (id, name, public)
+  VALUES ('calendar-screenshots', 'calendar-screenshots', true)
+  ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE game_calendar_images ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_events      ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Auth read game_calendar_images" ON game_calendar_images;
+CREATE POLICY "Auth read game_calendar_images" ON game_calendar_images
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Auth read calendar_events" ON calendar_events;
+CREATE POLICY "Auth read calendar_events" ON calendar_events
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- Storage: public read, authenticated insert (API route further restricts
+-- inserts/deletes to is_admin).
+DROP POLICY IF EXISTS "Auth upload calendar screenshots" ON storage.objects;
+CREATE POLICY "Auth upload calendar screenshots" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'calendar-screenshots' AND auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Public read calendar screenshots" ON storage.objects;
+CREATE POLICY "Public read calendar screenshots" ON storage.objects
+  FOR SELECT USING (bucket_id = 'calendar-screenshots');

@@ -29,6 +29,7 @@ export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
   preferred_language: string;
+  preferred_timezone: string;
   auto_translate: boolean;
   is_admin: boolean;
   tos_accepted_at: string | null;
@@ -63,6 +64,35 @@ export interface Connection {
   metadata: Record<string, unknown>;
   created_by: string | null;
   created_at: string;
+}
+
+// Calendar types -------------------------------------------------------------
+
+export type CalendarKind = "alliance" | "misc";
+export type CalendarEventType = "growth" | "attack" | "defense" | "rally";
+
+export interface CalendarEvent {
+  id: string;
+  kind: CalendarKind;
+  event_type: CalendarEventType;
+  title: string;
+  details: string | null;
+  starts_at: string;            // ISO UTC
+  ends_at: string | null;
+  assigned_to: string | null;   // profiles.id
+  created_by: string | null;    // profiles.id
+  created_at: string;
+  // Optional join expansion used by the event list API
+  assignee?: Pick<Profile, "id" | "display_name" | "avatar_url"> | null;
+}
+
+export interface GameCalendarImage {
+  id: string;
+  week_start: string;           // ISO date (Monday)
+  image_url: string;
+  sort_order: number;
+  uploaded_by: string | null;
+  uploaded_at: string;
 }
 
 export interface Message {
