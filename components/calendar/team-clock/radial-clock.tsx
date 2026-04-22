@@ -97,7 +97,7 @@ export function RadialClock({
   selectedR4s,
   overlayMode,
   weekday,
-  size = 520,
+  size = 820,
 }: Props) {
   const cx = size / 2;
   const cy = size / 2;
@@ -115,10 +115,12 @@ export function RadialClock({
     ];
   }, [timezones]);
 
-  const innerRadius = 60;
+  // Leave room for the R4 overlay band (22px) + a comfortable margin (24px).
+  const innerRadius = 78;
+  const reservedOuter = 22 + 24;
   const ringThickness = Math.max(
-    22,
-    Math.floor((size / 2 - innerRadius - 20) / rings.length)
+    26,
+    Math.floor((size / 2 - innerRadius - reservedOuter) / rings.length)
   );
   const outerRadius = innerRadius + ringThickness * rings.length;
 
@@ -156,9 +158,9 @@ export function RadialClock({
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      width={size}
-      height={size}
-      className="max-w-full max-h-[75vh] select-none"
+      preserveAspectRatio="xMidYMid meet"
+      className="w-full h-auto max-w-full select-none"
+      style={{ maxHeight: "min(85vh, 1000px)" }}
       aria-label="Team availability clock"
     >
       {/* Radial-period rings (one <g> per ring) */}
@@ -186,21 +188,30 @@ export function RadialClock({
               );
             })}
 
-            {/* Ring label on the right side, centered on the ring's midradius */}
+            {/* Ring label sitting INSIDE the top (12 o'clock) segment, so
+                labels stack vertically up the clock rather than smushing
+                together at 3 o'clock. Stroke-as-paint-order gives each
+                label a dark halo for readability against any period color. */}
             <text
-              x={cx + (rIn + rOut) / 2 + 2}
-              y={cy + 3}
+              x={cx}
+              y={cy - (rIn + rOut) / 2 + 4}
+              textAnchor="middle"
               className="fill-foreground"
               style={{
-                fontSize: Math.min(11, ringThickness * 0.42),
-                fontWeight: 600,
+                fontSize: Math.min(13, ringThickness * 0.48),
+                fontWeight: 700,
                 paintOrder: "stroke",
-                stroke: "var(--color-background, #111)",
+                stroke: "#0a0a0a",
                 strokeWidth: 3,
+                letterSpacing: 0.3,
               }}
             >
               {ring.label}
             </text>
+
+            {/* Tooltip on any segment of the ring so hover/tap surfaces the
+                IANA identity when the label text is abbreviated. */}
+            <title>{`${ring.label} (${ring.iana})`}</title>
           </g>
         );
       })}
@@ -248,12 +259,15 @@ export function RadialClock({
         transform={`rotate(${nowUtcHour * 15 + 7.5} ${cx} ${cy})`}
       />
 
-      {/* Hour tick labels around the innermost ring */}
+      {/* Hour tick labels at the OUTER edge of the outermost ring — outside
+          the clock body so they don't crowd the center and stay legible at
+          larger sizes. */}
       {Array.from({ length: 24 }).map((_, hour) => {
         const angle = hour * 15 + 7.5;
         const rad = ((angle - 90) * Math.PI) / 180;
-        const tx = cx + (innerRadius - 14) * Math.cos(rad);
-        const ty = cy + (innerRadius - 14) * Math.sin(rad) + 3;
+        const r = outerRadius + 32;
+        const tx = cx + r * Math.cos(rad);
+        const ty = cy + r * Math.sin(rad) + 4;
         return (
           <text
             key={hour}
@@ -261,31 +275,48 @@ export function RadialClock({
             y={ty}
             textAnchor="middle"
             className="fill-muted"
-            style={{ fontSize: 9, fontFamily: "var(--font-mono, ui-monospace)" }}
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "var(--font-mono, ui-monospace)",
+            }}
           >
             {String(hour).padStart(2, "0")}
           </text>
         );
       })}
 
-      {/* Center: live UTC time + weekday */}
-      <circle cx={cx} cy={cy} r={innerRadius - 20} fill="#111" stroke="#2a2a2a" />
+      {/* Center: live UTC time + weekday. Sized relative to the inner disc
+          so it scales with the overall clock. */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={innerRadius - 6}
+        fill="#0a0a0a"
+        stroke="#2a2a2a"
+        strokeWidth={1.5}
+      />
       <text
         x={cx}
-        y={cy - 6}
+        y={cy - 4}
         textAnchor="middle"
         className="fill-accent"
-        style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-mono, ui-monospace)" }}
+        style={{
+          fontSize: 34,
+          fontWeight: 700,
+          fontFamily: "var(--font-mono, ui-monospace)",
+          letterSpacing: 1,
+        }}
       >
         {String(nowUtcHour).padStart(2, "0")}:
         {String(new Date().getUTCMinutes()).padStart(2, "0")}
       </text>
       <text
         x={cx}
-        y={cy + 12}
+        y={cy + 22}
         textAnchor="middle"
         className="fill-muted"
-        style={{ fontSize: 10, letterSpacing: 1.5 }}
+        style={{ fontSize: 13, letterSpacing: 2, fontWeight: 600 }}
       >
         UTC · {weekday.toUpperCase()}
       </text>
