@@ -317,3 +317,55 @@ ALTER TABLE calendar_events DROP CONSTRAINT IF EXISTS calendar_events_kind_check
 ALTER TABLE calendar_events
   ADD CONSTRAINT calendar_events_kind_check
   CHECK (kind IN ('alliance', 'misc', 'game'));
+
+-- =============================================================
+-- Phase 2.2: Team Clock — R4 availability + configurable timezone rings
+-- =============================================================
+-- A radial clock visualization that helps R5s see which R4s are reachable at
+-- any given UTC hour, across multiple local timezones. Based on the alliance's
+-- existing French "Fuseaux horaires" spreadsheet.
+--
+-- Data model:
+--   profiles.availability_utc JSONB
+--     Per-weekday arrays of UTC hours (0-23) the user is online.
+--     Shape: { mon: [0,1,20,21,22,23], tue: [...], ..., sun: [...] }
+--     Empty {} = unknown / not yet configured. NULL treated same as empty.
+--
+--   team_clock_timezones (rows)
+--     The IANA zones rendered as concentric rings. R5 curates this list.
+--     Seeded with the six from the spreadsheet.
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS availability_utc JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS team_clock_timezones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  iana TEXT NOT NULL UNIQUE,   -- e.g. 'America/Los_Angeles'
+  label TEXT NOT NULL,         -- e.g. 'Los Angeles'
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_team_clock_tz_sort ON team_clock_timezones(sort_order);
+
+ALTER TABLE team_clock_timezones ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Auth read team_clock_timezones" ON team_clock_timezones;
+CREATE POLICY "Auth read team_clock_timezones" ON team_clock_timezones
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- Writes go through service-client API routes gated on is_admin.
+
+-- Seed with the defaults from the original spreadsheet. ON CONFLICT so this
+-- is idempotent on re-run.
+INSERT INTO team_clock_timezones (iana, label, sort_order) VALUES
+  ('America/Los_Angeles', 'Los Angeles',  10),
+  ('America/New_York',   'New York',      20),
+  ('Europe/London',      'London',        30),
+  ('Europe/Paris',       'Paris',         40),
+  ('Europe/Istanbul',    'Istanbul',      50),
+  ('Asia/Dubai',         'Dubai',         60),
+  ('Asia/Kolkata',       'India',         70),
+  ('Asia/Hong_Kong',     'Hong Kong',     80),
+  ('Asia/Seoul',         'Seoul',         90),
+  ('Australia/Sydney',   'Sydney',       100)
+ON CONFLICT (iana) DO NOTHING;

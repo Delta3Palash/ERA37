@@ -14,6 +14,7 @@ export function CalendarTabs() {
     { href: "/calendar/game", label: "Game" },
     { href: "/calendar/alliance", label: "Alliance" },
     { href: "/calendar/misc", label: "Miscellaneous" },
+    { href: "/calendar/team-clock", label: "Team Clock" },
   ];
 
   return (
