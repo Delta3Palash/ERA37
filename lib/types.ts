@@ -86,6 +86,30 @@ export interface CalendarEvent {
   assignee?: Pick<Profile, "id" | "display_name" | "avatar_url"> | null;
 }
 
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+export const WEEKDAYS: Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+/**
+ * UTC hours (0–23) the user is online, per weekday.
+ * Missing keys / empty arrays mean "unknown / not available."
+ */
+export type AvailabilityGrid = Partial<Record<Weekday, number[]>>;
+
+export interface TeamClockTimezone {
+  id: string;
+  iana: string;     // e.g. 'America/Los_Angeles'
+  label: string;    // display name, e.g. 'Los Angeles'
+  sort_order: number;
+  created_at: string;
+}
+
+export interface R4Availability {
+  id: string;                 // profiles.id
+  display_name: string | null;
+  avatar_url: string | null;
+  availability_utc: AvailabilityGrid;
+}
+
 export interface GameCalendarImage {
   id: string;
   week_start: string;           // ISO date (Monday)
