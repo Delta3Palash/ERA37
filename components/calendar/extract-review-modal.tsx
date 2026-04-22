@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, X, Sparkles } from "lucide-react";
 import type { CalendarEvent, CalendarEventType } from "@/lib/types";
 import { AssigneePicker } from "./assignee-picker";
+import { utcPreview } from "./use-user-timezone";
 
 interface Draft {
   include: boolean;
@@ -17,6 +18,10 @@ interface Draft {
 
 interface Props {
   imageUrl: string;
+  /** YYYY-MM-DD Monday of the week the screenshot covers. Anchors the year
+   *  for Claude so it can't default to the wrong one (game screenshots have
+   *  no year label on them). */
+  weekStart: string;
   onCancel: () => void;
   onCreated: (events: CalendarEvent[]) => void;
 }
@@ -30,7 +35,7 @@ const TYPES: CalendarEventType[] = ["growth", "attack", "defense", "rally"];
  * vision models hallucinate dates and misread icons often enough that a
  * human confirmation step keeps the calendar clean.
  */
-export function ExtractReviewModal({ imageUrl, onCancel, onCreated }: Props) {
+export function ExtractReviewModal({ imageUrl, weekStart, onCancel, onCreated }: Props) {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +48,7 @@ export function ExtractReviewModal({ imageUrl, onCancel, onCreated }: Props) {
         const res = await fetch("/api/calendar/game/extract", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_url: imageUrl }),
+          body: JSON.stringify({ image_url: imageUrl, week_start: weekStart }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -80,7 +85,7 @@ export function ExtractReviewModal({ imageUrl, onCancel, onCreated }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [imageUrl]);
+  }, [imageUrl, weekStart]);
 
   function updateDraft(i: number, patch: Partial<Draft>) {
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
@@ -224,7 +229,9 @@ export function ExtractReviewModal({ imageUrl, onCancel, onCreated }: Props) {
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-muted mb-0.5">Starts</label>
+                        <label className="block text-[10px] text-muted mb-0.5">
+                          Starts <span className="text-muted/60">(local)</span>
+                        </label>
                         <input
                           type="datetime-local"
                           value={d.starts_local}
@@ -232,9 +239,14 @@ export function ExtractReviewModal({ imageUrl, onCancel, onCreated }: Props) {
                           disabled={!d.include}
                           className="w-full px-2.5 py-1.5 rounded bg-background border border-border text-sm"
                         />
+                        <div className="text-[10px] text-muted/70 mt-0.5 font-mono min-h-[12px]">
+                          {utcPreview(d.starts_local)}
+                        </div>
                       </div>
                       <div>
-                        <label className="block text-[10px] text-muted mb-0.5">Ends</label>
+                        <label className="block text-[10px] text-muted mb-0.5">
+                          Ends <span className="text-muted/60">(local)</span>
+                        </label>
                         <input
                           type="datetime-local"
                           value={d.ends_local}
@@ -242,6 +254,9 @@ export function ExtractReviewModal({ imageUrl, onCancel, onCreated }: Props) {
                           disabled={!d.include}
                           className="w-full px-2.5 py-1.5 rounded bg-background border border-border text-sm"
                         />
+                        <div className="text-[10px] text-muted/70 mt-0.5 font-mono min-h-[12px]">
+                          {utcPreview(d.ends_local)}
+                        </div>
                       </div>
                     </div>
                   </div>

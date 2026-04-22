@@ -11,7 +11,16 @@ import type { CalendarEventType } from "@/lib/types";
 
 const MODEL = "claude-sonnet-4-5";
 
-const SYSTEM_PROMPT = `You are parsing a weekly game event calendar screenshot from Age of Empires Mobile.
+function buildSystemPrompt(weekStart: string): string {
+  return `You are parsing a weekly game event calendar screenshot from Age of Empires Mobile.
+
+CONTEXT: This screenshot is for the week starting Monday ${weekStart}. The
+calendar only shows MM-DD day labels (e.g. "MON 04-20"), never a year.
+When outputting dates, YOU MUST use the year from the week above — do not
+guess, do not default to the current system year. For almost all events
+the year will be ${weekStart.slice(0, 4)}; the only time it might differ
+is for events that cross into early January of the next year, which you
+can infer from the header.
 
 Identify every event bar in the image and return a JSON array. For each event:
 
@@ -23,10 +32,12 @@ Identify every event bar in the image and return a JSON array. For each event:
 }
 
 Rules:
-- Use the day labels visible in the calendar header (e.g. "MON 04-20") as the source of truth for dates.
+- Use the day labels visible in the calendar header as the source of truth for month/day.
+- ALL dates must be anchored to the week starting ${weekStart}.
 - Skip events that show only an icon with no readable name.
 - Do not invent events you cannot see clearly.
 - Return ONLY the JSON array. No markdown, no explanation, no preamble.`;
+}
 
 interface ExtractedEventDraft {
   title: string;
@@ -59,8 +70,15 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const imageUrl = body.image_url;
+  const weekStart = body.week_start;
   if (!imageUrl || typeof imageUrl !== "string") {
     return NextResponse.json({ error: "image_url is required" }, { status: 400 });
+  }
+  if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    return NextResponse.json(
+      { error: "week_start is required (YYYY-MM-DD)" },
+      { status: 400 }
+    );
   }
 
   const client = new Anthropic({ apiKey });
@@ -69,7 +87,7 @@ export async function POST(req: NextRequest) {
     const message = await client.messages.create({
       model: MODEL,
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(weekStart),
       messages: [
         {
           role: "user",

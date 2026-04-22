@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type { CalendarEvent, CalendarEventType, CalendarKind } from "@/lib/types";
 import { AssigneePicker } from "./assignee-picker";
+import { utcPreview } from "./use-user-timezone";
 
 interface Props {
   kind: CalendarKind;
@@ -137,7 +138,9 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-muted mb-1">Starts</label>
+              <label className="block text-xs text-muted mb-1">
+                Starts <span className="text-muted/60">(your local time)</span>
+              </label>
               <input
                 type="datetime-local"
                 value={startsLocal}
@@ -145,15 +148,23 @@ export function EventForm({ kind, initial, onSave, onCancel }: Props) {
                 required
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
               />
+              <div className="text-[10px] text-muted/70 mt-1 font-mono min-h-[14px]">
+                {utcPreview(startsLocal)}
+              </div>
             </div>
             <div>
-              <label className="block text-xs text-muted mb-1">Ends (optional)</label>
+              <label className="block text-xs text-muted mb-1">
+                Ends <span className="text-muted/60">(optional)</span>
+              </label>
               <input
                 type="datetime-local"
                 value={endsLocal}
                 onChange={(e) => setEndsLocal(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm"
               />
+              <div className="text-[10px] text-muted/70 mt-1 font-mono min-h-[14px]">
+                {utcPreview(endsLocal)}
+              </div>
             </div>
           </div>
 
