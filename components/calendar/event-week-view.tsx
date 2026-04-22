@@ -61,11 +61,18 @@ export function EventWeekView({ kind, canWrite, currentUserId, isAdmin, footer }
     loadEvents();
   }, [loadEvents]);
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this event?")) return;
+  // Fire the DELETE request and update local state. Callers are responsible
+  // for confirming — the inline list button asks here; the edit modal asks
+  // inside itself before invoking its onDelete.
+  async function deleteEventById(id: string) {
     const res = await fetch(`/api/calendar/events/${id}`, { method: "DELETE" });
     if (res.ok) setEvents((prev) => prev.filter((e) => e.id !== id));
     else alert(`Delete failed: ${(await res.json()).error || res.status}`);
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this event?")) return;
+    await deleteEventById(id);
   }
 
   function canEdit(e: CalendarEvent): boolean {
@@ -290,6 +297,14 @@ export function EventWeekView({ kind, canWrite, currentUserId, isAdmin, footer }
             setEvents((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
             setEditing(null);
           }}
+          onDelete={
+            canEdit(editing)
+              ? async (id) => {
+                  await deleteEventById(id);
+                  setEditing(null);
+                }
+              : undefined
+          }
         />
       )}
     </div>
