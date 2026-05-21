@@ -423,3 +423,32 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
   END IF;
 END $$;
+
+-- =============================================================
+-- Phase 2.4: Translation cache (text-level, cross-message reuse)
+-- =============================================================
+-- Keyed by sha256(trim(text) || '|' || target_language) truncated to 32
+-- hex chars. Lets two alliance members translating the same Spanish
+-- blurb share one Google call. messages.translated_content still wins
+-- for the single-reader path; this table catches duplicates and reposts.
+CREATE TABLE IF NOT EXISTS translation_cache (
+  hash              TEXT PRIMARY KEY,
+  source_text       TEXT NOT NULL,
+  target_language   TEXT NOT NULL,
+  translated_text   TEXT NOT NULL,
+  detected_language TEXT,
+  created_at        TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_translation_cache_created
+  ON translation_cache(created_at DESC);
+
+ALTER TABLE translation_cache ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Auth read translation_cache" ON translation_cache;
+CREATE POLICY "Auth read translation_cache" ON translation_cache
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Auth write translation_cache" ON translation_cache;
+CREATE POLICY "Auth write translation_cache" ON translation_cache
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);

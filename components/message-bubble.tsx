@@ -36,6 +36,35 @@ function isVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
 }
 
+type TranslateErrShape = { code: string; retryable: boolean; message: string };
+
+function parseTranslateError(data: unknown): TranslateErrShape {
+  if (data && typeof data === "object") {
+    const err = (data as { error?: unknown }).error;
+    // New shape: { error: { code, retryable, message } }
+    if (err && typeof err === "object") {
+      const e = err as { code?: unknown; retryable?: unknown; message?: unknown };
+      if (typeof e.message === "string") {
+        return {
+          code: typeof e.code === "string" ? e.code : "unknown",
+          retryable: Boolean(e.retryable),
+          message: e.message,
+        };
+      }
+    }
+    // Legacy shape: { error: "..." } — may contain a leaked JSON payload.
+    // Scrub anything JSON-ish before showing.
+    if (typeof err === "string") {
+      return {
+        code: "unknown",
+        retryable: false,
+        message: err.includes("{") ? "Translation failed" : err,
+      };
+    }
+  }
+  return { code: "unknown", retryable: false, message: "Translation failed" };
+}
+
 interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
@@ -51,7 +80,8 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
   const [translatedText, setTranslatedText] = useState(message.translated_content);
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
-  const [translateError, setTranslateError] = useState<string | null>(null);
+  const [translateError, setTranslateError] = useState<TranslateErrShape | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
 
   const isOutgoing = message.direction === "outgoing" && message.sent_by === currentUserId;
   const isBridged = message.direction === "bridged";
@@ -63,6 +93,8 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
       setTranslateError(null);
       return;
     }
+
+    if (cooldownUntil > Date.now()) return;
 
     setTranslating(true);
     setTranslateError(null);
@@ -82,11 +114,25 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
         setTranslatedText(data.translatedText);
         setShowTranslation(true);
       } else {
-        const data = await res.json().catch(() => ({ error: "Translation failed" }));
-        setTranslateError(data.error || "Translation failed");
+        const data = await res.json().catch(() => null);
+        const err = parseTranslateError(data);
+        setTranslateError(err);
+        // Brief client-side cooldown so a panic-click loop doesn't make a
+        // server-side rate-limit worse.
+        if (err.code === "rate_limit") {
+          const until = Date.now() + 5000;
+          setCooldownUntil(until);
+          setTimeout(() => {
+            setCooldownUntil((curr) => (curr <= Date.now() ? 0 : curr));
+          }, 5100);
+        }
       }
     } catch {
-      setTranslateError("Network error — could not translate");
+      setTranslateError({
+        code: "unavailable",
+        retryable: true,
+        message: "Network error — could not translate",
+      });
     } finally {
       setTranslating(false);
     }
@@ -220,7 +266,21 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
 
         {/* Translation error */}
         {translateError && (
-          <p className="text-xs text-red-400 mt-1">{translateError}</p>
+          <div className="text-xs text-red-400 mt-1 flex items-center gap-2 flex-wrap">
+            <span>{translateError.message}</span>
+            {translateError.code === "config" && (
+              <span className="text-muted">(admin: check translation keys)</span>
+            )}
+            {translateError.retryable && cooldownUntil <= Date.now() && (
+              <button
+                onClick={handleTranslate}
+                disabled={translating}
+                className="underline hover:text-red-300 disabled:opacity-50"
+              >
+                Retry
+              </button>
+            )}
+          </div>
         )}
 
         {/* Action buttons — show on hover */}
@@ -235,19 +295,24 @@ export function MessageBubble({ message, currentUserId, preferredLanguage, showH
               <span>Reply</span>
             </button>
           )}
-          {message.content && (
-            <button
-              onClick={handleTranslate}
-              disabled={translating}
-              className={`flex items-center gap-1 text-[10px] transition-colors ${
-                showTranslation ? "text-accent" : "text-muted hover:text-accent"
-              }`}
-              title="Translate"
-            >
-              <Languages className={`w-3 h-3 ${translating ? "animate-pulse" : ""}`} />
-              <span>{showTranslation ? "Hide" : "Translate"}</span>
-            </button>
-          )}
+          {message.content && (() => {
+            const cooling = cooldownUntil > Date.now();
+            return (
+              <button
+                onClick={handleTranslate}
+                disabled={translating || cooling}
+                className={`flex items-center gap-1 text-[10px] transition-colors ${
+                  showTranslation ? "text-accent" : "text-muted hover:text-accent"
+                } ${cooling ? "opacity-50 cursor-not-allowed" : ""}`}
+                title={cooling ? "Cooling down after rate limit" : "Translate"}
+              >
+                <Languages className={`w-3 h-3 ${translating ? "animate-pulse" : ""}`} />
+                <span>
+                  {cooling ? "Cooling down…" : showTranslation ? "Hide" : "Translate"}
+                </span>
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>
